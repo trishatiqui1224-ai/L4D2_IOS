@@ -17,56 +17,24 @@ inline bool SDL_AddEventWatch(SDL_EventFilter filter, void* userdata) { (void)fi
 inline void SDL_RemoveEventWatch(SDL_EventFilter filter, void* userdata) { (void)filter; (void)userdata; }
 #endif
 
+#include "logging/logger.h"
+
 #if __has_include(<rex/logging.h>)
 #include <rex/logging.h>
 #include <rex/system/xmemory.h>
-#else
-#include "../../../src/logging/logger.h"
-#include <sstream>
+#endif
 
-namespace {
-template <typename T>
-inline void FormatHelper(std::ostringstream& ss, std::string_view& fmt, const T& val) {
-    auto pos = fmt.find('{');
-    if (pos == std::string_view::npos) {
-        ss << fmt;
-        fmt = {};
-        return;
-    }
-    ss << fmt.substr(0, pos);
-    auto end_pos = fmt.find('}', pos);
-    if (end_pos != std::string_view::npos) {
-        ss << val;
-        fmt = fmt.substr(end_pos + 1);
-    } else {
-        ss << fmt.substr(pos);
-        fmt = {};
-    }
-}
-
-inline void FormatImpl(std::ostringstream& ss, std::string_view fmt) {
-    ss << fmt;
-}
-
-template <typename First, typename... Rest>
-inline void FormatImpl(std::ostringstream& ss, std::string_view fmt, const First& first, const Rest&... rest) {
-    FormatHelper(ss, fmt, first);
-    FormatImpl(ss, fmt, rest...);
-}
-
-template <typename... Args>
-inline void RexLogWrapper(l4d2::log::Level level, std::string_view fmt, const Args&... args) {
-    std::ostringstream ss;
-    FormatImpl(ss, fmt, args...);
-    std::string s = ss.str();
-    l4d2::log::Logger::Instance().Log(level, "Audio", "%s", s.c_str());
-}
-} // namespace
-
-#define REXLOG_INFO(fmt, ...)  RexLogWrapper(l4d2::log::Level::Info, fmt, ##__VA_ARGS__)
-#define REXLOG_WARN(fmt, ...)  RexLogWrapper(l4d2::log::Level::Warn, fmt, ##__VA_ARGS__)
-#define REXLOG_ERROR(fmt, ...) RexLogWrapper(l4d2::log::Level::Error, fmt, ##__VA_ARGS__)
-#define REXLOG_DEBUG(fmt, ...) RexLogWrapper(l4d2::log::Level::Debug, fmt, ##__VA_ARGS__)
+#ifndef REXLOG_INFO
+#define REXLOG_INFO(fmt, ...)  L4D2_LOG_INFO("Audio", fmt, ##__VA_ARGS__)
+#endif
+#ifndef REXLOG_WARN
+#define REXLOG_WARN(fmt, ...)  L4D2_LOG_WARN("Audio", fmt, ##__VA_ARGS__)
+#endif
+#ifndef REXLOG_ERROR
+#define REXLOG_ERROR(fmt, ...) L4D2_LOG_ERROR("Audio", fmt, ##__VA_ARGS__)
+#endif
+#ifndef REXLOG_DEBUG
+#define REXLOG_DEBUG(fmt, ...) L4D2_LOG_DEBUG("Audio", fmt, ##__VA_ARGS__)
 #endif
 
 #include <algorithm>
