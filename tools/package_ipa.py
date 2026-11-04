@@ -34,6 +34,43 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
     print(f"[package_ipa] Copying {app_dir} -> {dest_app}...")
     shutil.copytree(app_dir, dest_app)
 
+    # 1. Ensure Info.plist is present in the app bundle
+    dest_plist = dest_app / "Info.plist"
+    if not dest_plist.exists():
+        plist_candidates = [
+            ROOT / "build" / "Info.plist",
+            ROOT / "build" / "ios" / "Info.plist",
+            ROOT / "ios" / "Info.plist",
+        ]
+        for p in plist_candidates:
+            if p.exists():
+                print(f"[package_ipa] Copying missing Info.plist from {p}...")
+                shutil.copy2(p, dest_plist)
+                break
+
+    # 2. Compile Assets.xcassets or copy AppIcons into the bundle
+    xcassets = ROOT / "ios" / "resources" / "Assets.xcassets"
+    if xcassets.exists():
+        # Try compiling with actool if available
+        actool_cmd = shutil.which("actool")
+        if not actool_cmd and shutil.which("xcrun"):
+            actool_cmd = "xcrun actool"
+        
+        if actool_cmd:
+            try:
+                cmd = f"xcrun actool --output-format human-readable-text --notices --warnings --export-dependency-info {temp_payload}/assetcatalog_dependencies --output-partial-info-plist {temp_payload}/assetcatalog_generated_info.plist --app-icon AppIcon --compress-pngs --enable-on-demand-resources NO --target-device iphone --target-device ipad --minimum-deployment-target 16.0 --platform iphoneos --compile '{dest_app}' '{xcassets}'"
+                print(f"[package_ipa] Compiling asset catalog with actool...")
+                subprocess.run(cmd, shell=True, check=False)
+            except Exception as e:
+                print(f"[package_ipa] Notice: actool compile skipped: {e}")
+
+        # Also copy raw AppIcon PNGs into the bundle root for sideloaders (TrollStore, AltStore, Sideloadly)
+        appicon_dir = xcassets / "AppIcon.appiconset"
+        if appicon_dir.exists():
+            for icon_file in appicon_dir.glob("*.png"):
+                shutil.copy2(icon_file, dest_app / icon_file.name)
+            print(f"[package_ipa] Copied raw AppIcon PNGs to {dest_app.name}/")
+
     print(f"[package_ipa] Archiving to {output_ipa}...")
     with zipfile.ZipFile(output_ipa, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(temp_payload):

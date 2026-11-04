@@ -47,6 +47,10 @@ DerivedData/
 __pycache__/
 *.pyc
 *.pyo
+tools/stream_monitor.py
+tools/fetch_job_log.py
+*.env
+
 
 # IDE & OS
 .DS_Store

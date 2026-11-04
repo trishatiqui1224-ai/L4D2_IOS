@@ -64,6 +64,7 @@ target_link_libraries(L4D2Recomp PRIVATE
     "-framework GameController"
     "-framework Metal"
     "-framework QuartzCore"
+    "-framework UniformTypeIdentifiers"
 )
 
 # App Bundle Properties
