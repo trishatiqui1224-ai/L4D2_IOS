@@ -276,4 +276,16 @@ BLOCKS = [
 ]
 
 if __name__ == "__main__":
+    from patch_engine import find_sdk
+    try:
+        sdk = find_sdk("src/ui/vulkan/vulkan_instance.cpp")
+        vk_cpp = sdk / "src/ui/vulkan/vulkan_instance.cpp"
+        if vk_cpp.exists():
+            vk_txt = vk_cpp.read_text(encoding="utf-8")
+            if INCLUDE_ANCHOR not in vk_txt and "#include <rex/ui/vulkan/vulkan_moltenvk.h>" in vk_txt:
+                alt_anchor = "#include <rex/ui/vulkan/vulkan_moltenvk.h>\n"
+                alt_new = "#include <rex/ui/vulkan/vulkan_moltenvk.h>\n// LOCAL PATCH - iOS: GetExecutableFolder()\n#if REX_PLATFORM_IOS\n#include <rex/filesystem.h>\n#endif\n"
+                BLOCKS[3] = ("src/ui/vulkan/vulkan_instance.cpp", "include rex/filesystem.h", alt_anchor, alt_new)
+    except Exception:
+        pass
     sys.exit(run("ios_paths", BLOCKS))

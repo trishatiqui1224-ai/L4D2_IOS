@@ -421,6 +421,7 @@ def project_patches(sdk):
 def ios_patches(sdk, status=False):
     env = dict(
         os.environ,
+        L4D2_SDK=str(sdk),
         NFSCARBON_SDK=str(sdk),
         NFSC_SDK=str(sdk),
         NFSMW_SDK=str(sdk),

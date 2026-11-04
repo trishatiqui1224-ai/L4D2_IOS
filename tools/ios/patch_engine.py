@@ -26,7 +26,8 @@ def find_sdk(probe_file):
     would patch the wrong one.
     """
     other = (
-        os.environ.get("NFSCARBON_SDK")
+        os.environ.get("L4D2_SDK")
+        or os.environ.get("NFSCARBON_SDK")
         or os.environ.get("NFSC_SDK")
         or os.environ.get("NFSMW_SDK")
     )
