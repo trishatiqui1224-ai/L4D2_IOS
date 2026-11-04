@@ -50,7 +50,7 @@ set(L4D2_MOLTENVK_FW "")
 foreach(c ${_mvk_candidates})
     if(EXISTS "${c}/MoltenVK")
         set(L4D2_MOLTENVK_FW "${c}")
-        break
+        break()
     endif()
 endforeach()
 if(NOT L4D2_MOLTENVK_FW)
@@ -181,8 +181,6 @@ target_compile_definitions(L4D2Recomp PRIVATE
 target_link_libraries(L4D2Recomp PRIVATE
     ${FORCE_LOAD_FLAGS}
     ${RECOMP_LIBS}
-    rexruntime
-    rexgpu-xenos
     "-framework UIKit"
     "-framework Foundation"
     "-framework AudioToolbox"
@@ -193,6 +191,16 @@ target_link_libraries(L4D2Recomp PRIVATE
     "-framework UniformTypeIdentifiers"
     z
 )
+
+if(TARGET rex::runtime)
+    target_link_libraries(L4D2Recomp PRIVATE rex::runtime)
+elseif(TARGET rexruntime)
+    target_link_libraries(L4D2Recomp PRIVATE rexruntime)
+endif()
+
+if(TARGET rexgpu-xenos)
+    target_link_libraries(L4D2Recomp PRIVATE rexgpu-xenos)
+endif()
 
 # App Bundle Properties
 configure_file(
@@ -207,16 +215,36 @@ configure_file(
 set(_app "$<TARGET_BUNDLE_DIR:L4D2Recomp>")
 set(_fw "${_app}/Frameworks")
 
+if(TARGET rexruntime)
+    set(_copy_rexruntime COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rexruntime>" "${_fw}/")
+    set(_sign_rexruntime COMMAND codesign --force --sign - --timestamp=none "${_fw}/$<TARGET_FILE_NAME:rexruntime>" || true)
+    set(_dep_rexruntime rexruntime)
+else()
+    set(_copy_rexruntime COMMAND ${CMAKE_COMMAND} -E true)
+    set(_sign_rexruntime COMMAND ${CMAKE_COMMAND} -E true)
+    set(_dep_rexruntime "")
+endif()
+
+if(TARGET rexgpu-xenos)
+    set(_copy_rexgpu COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rexgpu-xenos>" "${_fw}/")
+    set(_sign_rexgpu COMMAND codesign --force --sign - --timestamp=none "${_fw}/$<TARGET_FILE_NAME:rexgpu-xenos>" || true)
+    set(_dep_rexgpu rexgpu-xenos)
+else()
+    set(_copy_rexgpu COMMAND ${CMAKE_COMMAND} -E true)
+    set(_sign_rexgpu COMMAND ${CMAKE_COMMAND} -E true)
+    set(_dep_rexgpu "")
+endif()
+
 add_custom_target(l4d2_stage_frameworks ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_fw}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rexruntime>" "${_fw}/"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rexgpu-xenos>" "${_fw}/"
+    ${_copy_rexruntime}
+    ${_copy_rexgpu}
     COMMAND cp -RL "${L4D2_MOLTENVK_FW}" "${_fw}/MoltenVK.framework"
-    COMMAND codesign --force --sign - --timestamp=none "${_fw}/$<TARGET_FILE_NAME:rexruntime>" || true
-    COMMAND codesign --force --sign - --timestamp=none "${_fw}/$<TARGET_FILE_NAME:rexgpu-xenos>" || true
+    ${_sign_rexruntime}
+    ${_sign_rexgpu}
     COMMAND codesign --force --sign - --timestamp=none "${_fw}/MoltenVK.framework" || true
     COMMAND codesign --force --sign - --timestamp=none "${_app}" || true
-    DEPENDS L4D2Recomp rexruntime rexgpu-xenos
+    DEPENDS L4D2Recomp ${_dep_rexruntime} ${_dep_rexgpu}
     COMMENT "Staging real dereferenced MoltenVK, rexruntime, and rexgpu-xenos into Frameworks..."
     VERBATIM
 )
