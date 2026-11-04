@@ -30,6 +30,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
+          submodules: recursive
           fetch-depth: 1
 
       - name: Select Xcode 16 for C++20/C++23 Toolchain
@@ -56,6 +57,17 @@ jobs:
           python3 -m pip install pillow
           HOMEBREW_NO_AUTO_UPDATE=1 brew install cmake ninja
 
+      - name: Cache ReXGlue iOS SDK & MoltenVK
+        uses: actions/cache@v4
+        id: cache-sdk
+        with:
+          path: |
+            ${{ github.workspace }}/../rexglue-sdk-ios
+            ~/.nfsc-ios
+          key: ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-l4d2-p1
+          restore-keys: |
+            ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-
+
       - name: Setup AppIcon & Assets Catalog
         run: |
           python3 tools/generate_appicon.py
@@ -77,6 +89,19 @@ jobs:
           rm -f /tmp/test_manifest_verifier
           echo "[CI] All pre-flight unit tests PASSED cleanly with 0 sanitizer violations."
 
+      - name: Restore Recompiled C++ Sources from gen.tar.gz
+        run: |
+          echo "[CI] Restoring all 19 recompiled Source Engine modules..."
+          python3 tools/generate_code.py --unpack-cache
+
+      - name: Prepare ReXGlue iOS SDK & MoltenVK
+        run: |
+          echo "[CI] Preparing ReXGlue iOS SDK tree and MoltenVK.framework..."
+          python3 tools/ios/prepare_sdk.py --sdk "${GITHUB_WORKSPACE}/../rexglue-sdk-ios"
+          if [ -d "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" ]; then
+            (cd "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" && git tag -f v0.10.0 HEAD 2>/dev/null || true)
+          fi
+
       - name: Configure CMake for iOS (ARM64 Native)
         run: |
           mkdir -p build dist
@@ -93,6 +118,7 @@ jobs:
             -DCMAKE_OSX_SYSROOT=iphoneos \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=16.4 \
             -DREX_PLATFORM_IOS=1 \
+            -DL4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" \
             -DCMAKE_C_COMPILER="${CC}" \
             -DCMAKE_CXX_COMPILER="${CXX}" \
             -DCMAKE_OBJC_COMPILER="${CC}" \
@@ -102,7 +128,7 @@ jobs:
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
 
-      - name: Compile iOS Target Bundle
+      - name: Compile iOS Target Bundle & Static Recomp Modules
         run: |
           cmake --build build --config Release -- -j 4 || {
             echo "[CI] Build failed, retrying with verbose single-job output..."
@@ -113,6 +139,33 @@ jobs:
       - name: Package Distributable .ipa
         run: |
           python3 tools/package_ipa.py --out dist/L4D2-Recomp-iOS.ipa
+
+      - name: "Mandatory CI Verification Gate: Binary Size & Symbol Verification"
+        run: |
+          cd dist
+          IPA_BYTES=$(stat -f%z L4D2-Recomp-iOS.ipa 2>/dev/null || stat -c%s L4D2-Recomp-iOS.ipa)
+          echo "IPA size: $IPA_BYTES bytes"
+          if [ "$IPA_BYTES" -lt 52428800 ]; then
+            echo "ERROR: IPA is smaller than 50 MB ($IPA_BYTES bytes) — missing recompiled code or frameworks!"
+            exit 1
+          fi
+
+          echo "[CI] Inspecting IPA Frameworks:"
+          unzip -l L4D2-Recomp-iOS.ipa | grep -E "Frameworks/MoltenVK\.framework/MoltenVK|librexruntime\.dylib|librexgpu-xenos\.dylib"
+
+          echo "[CI] Inspecting compiled guest functions in L4D2Recomp binary:"
+          rm -rf /tmp/ipa_inspect
+          unzip -q L4D2-Recomp-iOS.ipa -d /tmp/ipa_inspect
+          otool -L /tmp/ipa_inspect/Payload/L4D2Recomp.app/L4D2Recomp
+
+          FUNC_COUNT=$(nm -gU /tmp/ipa_inspect/Payload/L4D2Recomp.app/L4D2Recomp | grep -c "sub_8" || true)
+          echo "Compiled guest function symbols in binary: $FUNC_COUNT"
+          if [ "$FUNC_COUNT" -lt 10000 ]; then
+            echo "ERROR: Expected 10,000+ compiled PPC functions in binary, found $FUNC_COUNT!"
+            exit 1
+          fi
+          echo "[CI] Verification PASSED: Real static-recompiled IPA verified ($IPA_BYTES bytes, $FUNC_COUNT PPC functions)."
+          rm -rf /tmp/ipa_inspect
 
       - name: Compute Checksums & Verify Artifacts
         run: |

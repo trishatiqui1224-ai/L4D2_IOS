@@ -34,6 +34,7 @@ Caches/
 build/
 build-*/
 DerivedData/
+generated/
 *.ipa
 *.app
 *.dSYM
@@ -49,6 +50,8 @@ __pycache__/
 *.pyo
 tools/stream_monitor.py
 tools/fetch_job_log.py
+tools/get_latest_runs.py
+tools/test_module_codegen.py
 *.env
 
 

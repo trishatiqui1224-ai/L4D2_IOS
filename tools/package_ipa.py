@@ -71,6 +71,49 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
                 shutil.copy2(icon_file, dest_app / icon_file.name)
             print(f"[package_ipa] Copied raw AppIcon PNGs to {dest_app.name}/")
 
+    # 3. Ensure Frameworks are fully populated with dereferenced binaries
+    fw_dir = dest_app / "Frameworks"
+    fw_dir.mkdir(parents=True, exist_ok=True)
+
+    # Search for MoltenVK.framework
+    mvk_dest = fw_dir / "MoltenVK.framework"
+    if not (mvk_dest / "MoltenVK").exists():
+        mvk_candidates = [
+            ROOT / "build" / "Frameworks" / "MoltenVK.framework",
+            ROOT.parent / "rexglue-sdk-ios" / ".nfsc-ios" / "MoltenVK" / "v1.4.1" / "ios-arm64" / "MoltenVK.framework",
+            ROOT.parent / "rexglue-sdk-ios" / ".nfsmw-ios" / "MoltenVK" / "v1.4.1" / "ios-arm64" / "MoltenVK.framework",
+        ]
+        mvk_candidates.extend(ROOT.parent.glob("**/ios-arm64/MoltenVK.framework"))
+        for mc in mvk_candidates:
+            if (mc / "MoltenVK").exists():
+                print(f"[package_ipa] Staging MoltenVK.framework from {mc}...")
+                if mvk_dest.exists():
+                    shutil.rmtree(mvk_dest)
+                shutil.copytree(mc, mvk_dest, symlinks=False)
+                break
+
+    # Search for librexruntime.dylib & librexgpu-xenos.dylib
+    for dylib_name in ["librexruntime.dylib", "librexgpu-xenos.dylib"]:
+        dest_dylib = fw_dir / dylib_name
+        if not dest_dylib.exists():
+            for f in ROOT.glob(f"**/{dylib_name}"):
+                if f.is_file():
+                    print(f"[package_ipa] Staging {dylib_name} from {f}...")
+                    shutil.copy2(f, dest_dylib)
+                    break
+
+    # 4. Ad-hoc codesign every framework and the app bundle
+    if shutil.which("codesign"):
+        print("[package_ipa] Ad-hoc signing embedded frameworks...")
+        for fw_item in fw_dir.iterdir():
+            subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(fw_item)], check=False)
+        entitlements = ROOT / "ios" / "l4d2recomp.entitlements"
+        sign_cmd = ["codesign", "--force", "--sign", "-", "--timestamp=none"]
+        if entitlements.exists():
+            sign_cmd.extend(["--entitlements", str(entitlements)])
+        sign_cmd.append(str(dest_app))
+        subprocess.run(sign_cmd, check=False)
+
     print(f"[package_ipa] Archiving to {output_ipa}...")
     with zipfile.ZipFile(output_ipa, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(temp_payload):

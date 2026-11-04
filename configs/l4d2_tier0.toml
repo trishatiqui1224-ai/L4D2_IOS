@@ -1,0 +1,12 @@
+[project]
+name = "l4d2_tier0"
+sdk_version = "1.0.0"
+game_root = "E:/Project/L4D2 IOS/Left 4 Dead 2 (World) (En,Ja,Fr,De,Es,It,Pt,Zh,Ko,Pl,Ru)"
+
+[entrypoint]
+file_path = "E:/Project/L4D2 IOS/Left 4 Dead 2 (World) (En,Ja,Fr,De,Es,It,Pt,Zh,Ko,Pl,Ru)/bin/tier0_360.dll"
+out_directory_path = "E:/Project/L4D2 IOS/generated/tier0_360"
+includes = []
+
+[entrypoint.functions]
+0x82C00000 = {}

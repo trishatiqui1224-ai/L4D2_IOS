@@ -10,6 +10,33 @@ namespace l4d2 {
 
 namespace fs = std::filesystem;
 
+namespace rex::runtime { class IModuleRegistrar; }
+struct PPCFuncMapping { uint32_t address; void (*function)(); };
+
+#define DECLARE_MODULE_SYMBOLS(name) \
+    void l4d2_##name##_RegisterFunctions(rex::runtime::IModuleRegistrar*); \
+    extern PPCFuncMapping l4d2_##name##_PPCFuncMappings[];
+
+DECLARE_MODULE_SYMBOLS(default)
+DECLARE_MODULE_SYMBOLS(engine)
+DECLARE_MODULE_SYMBOLS(client)
+DECLARE_MODULE_SYMBOLS(server)
+DECLARE_MODULE_SYMBOLS(materialsystem)
+DECLARE_MODULE_SYMBOLS(shaderapidx9)
+DECLARE_MODULE_SYMBOLS(stdshader_dx9)
+DECLARE_MODULE_SYMBOLS(studiorender)
+DECLARE_MODULE_SYMBOLS(vphysics)
+DECLARE_MODULE_SYMBOLS(soundemitter)
+DECLARE_MODULE_SYMBOLS(datacache)
+DECLARE_MODULE_SYMBOLS(scenefilecache)
+DECLARE_MODULE_SYMBOLS(vgui2)
+DECLARE_MODULE_SYMBOLS(vguimatsurface)
+DECLARE_MODULE_SYMBOLS(inputsystem)
+DECLARE_MODULE_SYMBOLS(filesystem)
+DECLARE_MODULE_SYMBOLS(vstdlib)
+DECLARE_MODULE_SYMBOLS(tier0)
+DECLARE_MODULE_SYMBOLS(matchmaking)
+
 ModuleLoader& ModuleLoader::Instance() {
     static ModuleLoader instance;
     return instance;
@@ -52,8 +79,43 @@ void ModuleLoader::Init(const std::string& game_root, const std::string& save_ro
         module_index_by_name_[rel_lower] = idx;
     }
 
-    L4D2_LOG_INFO("ModuleLoader", "Initialized Source Engine multi-module dispatcher with %zu modules",
-                  loaded_modules_.size());
+    struct RecompModuleBinding {
+        const char* name;
+        void (*register_fn)(rex::runtime::IModuleRegistrar*);
+        PPCFuncMapping* mappings;
+    };
+
+    static const RecompModuleBinding kBindings[] = {
+        {"default.xex", l4d2_default_RegisterFunctions, l4d2_default_PPCFuncMappings},
+        {"engine_360.dll", l4d2_engine_RegisterFunctions, l4d2_engine_PPCFuncMappings},
+        {"client_360.dll", l4d2_client_RegisterFunctions, l4d2_client_PPCFuncMappings},
+        {"server_360.dll", l4d2_server_RegisterFunctions, l4d2_server_PPCFuncMappings},
+        {"MaterialSystem_360.dll", l4d2_materialsystem_RegisterFunctions, l4d2_materialsystem_PPCFuncMappings},
+        {"shaderapidx9_360.dll", l4d2_shaderapidx9_RegisterFunctions, l4d2_shaderapidx9_PPCFuncMappings},
+        {"stdshader_dx9_360.dll", l4d2_stdshader_dx9_RegisterFunctions, l4d2_stdshader_dx9_PPCFuncMappings},
+        {"StudioRender_360.dll", l4d2_studiorender_RegisterFunctions, l4d2_studiorender_PPCFuncMappings},
+        {"vphysics_360.dll", l4d2_vphysics_RegisterFunctions, l4d2_vphysics_PPCFuncMappings},
+        {"SoundEmitterSystem_360.dll", l4d2_soundemitter_RegisterFunctions, l4d2_soundemitter_PPCFuncMappings},
+        {"datacache_360.dll", l4d2_datacache_RegisterFunctions, l4d2_datacache_PPCFuncMappings},
+        {"SceneFileCache_360.dll", l4d2_scenefilecache_RegisterFunctions, l4d2_scenefilecache_PPCFuncMappings},
+        {"vgui2_360.dll", l4d2_vgui2_RegisterFunctions, l4d2_vgui2_PPCFuncMappings},
+        {"vguimatsurface_360.dll", l4d2_vguimatsurface_RegisterFunctions, l4d2_vguimatsurface_PPCFuncMappings},
+        {"inputsystem_360.dll", l4d2_inputsystem_RegisterFunctions, l4d2_inputsystem_PPCFuncMappings},
+        {"FileSystem_Stdio_360.dll", l4d2_filesystem_RegisterFunctions, l4d2_filesystem_PPCFuncMappings},
+        {"vstdlib_360.dll", l4d2_vstdlib_RegisterFunctions, l4d2_vstdlib_PPCFuncMappings},
+        {"tier0_360.dll", l4d2_tier0_RegisterFunctions, l4d2_tier0_PPCFuncMappings},
+        {"matchmaking_360.dll", l4d2_matchmaking_RegisterFunctions, l4d2_matchmaking_PPCFuncMappings},
+    };
+
+    uint32_t total_bound_anchors = 0;
+    for (const auto& b : kBindings) {
+        if (b.mappings && b.mappings[0].address != 0) {
+            total_bound_anchors++;
+        }
+    }
+
+    L4D2_LOG_INFO("ModuleLoader", "Initialized Source Engine multi-module dispatcher with %zu modules (%u static recomp anchors)",
+                  loaded_modules_.size(), total_bound_anchors);
 }
 
 void ModuleLoader::Shutdown() {
