@@ -64,7 +64,7 @@ jobs:
         run: |
           python3 tools/verify_assets.py --gen-header
 
-      - name: Pre-Flight Check: Run Unit Tests with ASan & UBSan
+      - name: "Pre-Flight Check: Run Unit Tests with ASan & UBSan"
         run: |
           echo "[CI] Compiling and running host argv deduplication test (ASan/UBSan)..."
           clang++ -std=c++20 -fsanitize=address,undefined -Wall -Wextra tools/test_argv_dedup.cpp -o /tmp/test_argv_dedup
