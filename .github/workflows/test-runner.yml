@@ -3,10 +3,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-linux:
-    runs-on: ubuntu-latest
+  test-runners:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-13]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Verify Runner
         run: |
-          echo "Linux runner works!"
-          uname -a
+          echo "Runner ${{ matrix.os }} works!"
+          sw_vers
