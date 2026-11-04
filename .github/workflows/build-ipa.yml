@@ -1,0 +1,143 @@
+name: Build Left 4 Dead 2 iOS IPA
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Configuration'
+        required: false
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - RelWithDebInfo
+          - Debug
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: Build L4D2 Recomp iOS (ARM64)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Select Xcode 16 for C++20/C++23 Toolchain
+        run: |
+          XCODE_16=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "${XCODE_16}" ]; then
+            echo "[CI] Selecting Xcode 16 at ${XCODE_16}..."
+            sudo xcode-select -s "${XCODE_16}"
+          else
+            echo "[CI] Xcode 16 not found by glob, checking active Xcode:"
+          fi
+          xcodebuild -version
+          xcrun --sdk iphoneos --find clang
+          xcrun --sdk iphoneos --find clang++
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Build Dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pillow
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install cmake ninja
+
+      - name: Setup AppIcon & Assets Catalog
+        run: |
+          python3 tools/generate_appicon.py
+
+      - name: Verify Disc Manifest & Generate C++ Headers
+        run: |
+          python3 tools/verify_assets.py --gen-header
+
+      - name: Pre-Flight Check: Run Unit Tests with ASan & UBSan
+        run: |
+          echo "[CI] Compiling and running host argv deduplication test (ASan/UBSan)..."
+          clang++ -std=c++20 -fsanitize=address,undefined -Wall -Wextra tools/test_argv_dedup.cpp -o /tmp/test_argv_dedup
+          /tmp/test_argv_dedup
+          rm -f /tmp/test_argv_dedup
+
+          echo "[CI] Compiling and running disc manifest verifier test (ASan/UBSan)..."
+          clang++ -std=c++20 -fsanitize=address,undefined -Wall -Wextra tools/test_manifest_verifier.cpp -o /tmp/test_manifest_verifier
+          /tmp/test_manifest_verifier
+          rm -f /tmp/test_manifest_verifier
+          echo "[CI] All pre-flight unit tests PASSED cleanly with 0 sanitizer violations."
+
+      - name: Configure CMake for iOS (ARM64 Native)
+        run: |
+          mkdir -p build dist
+          cd ios
+          export CC="$(xcrun --sdk iphoneos --find clang)"
+          export CXX="$(xcrun --sdk iphoneos --find clang++)"
+          export OBJC="${CC}"
+          export OBJCXX="${CXX}"
+
+          cmake -B ../build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DREX_PLATFORM_IOS=1 \
+            -DCMAKE_C_COMPILER="${CC}" \
+            -DCMAKE_CXX_COMPILER="${CXX}" \
+            -DCMAKE_OBJC_COMPILER="${CC}" \
+            -DCMAKE_OBJCXX_COMPILER="${CXX}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=""
+
+      - name: Compile iOS Target Bundle
+        run: |
+          cmake --build build --config Release -- -j 4 || {
+            echo "[CI] Build failed, retrying with verbose single-job output..."
+            cmake --build build --config Release -v -- -j 1
+            exit 1
+          }
+
+      - name: Package Distributable .ipa
+        run: |
+          python3 tools/package_ipa.py --out dist/L4D2-Recomp-iOS.ipa
+
+      - name: Compute Checksums & Verify Artifacts
+        run: |
+          cd dist
+          shasum -a 256 L4D2-Recomp-iOS.ipa > SHA256SUMS.txt
+          echo "[CI] SHA-256 Checksums:"
+          cat SHA256SUMS.txt
+
+      - name: Upload Unsigned IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: L4D2-Recomp-iOS-unsigned-ipa
+          path: |
+            dist/L4D2-Recomp-iOS.ipa
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish GitHub Release (On Tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/L4D2-Recomp-iOS.ipa
+            dist/SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true

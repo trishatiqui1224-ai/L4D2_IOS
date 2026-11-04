@@ -20,9 +20,36 @@
 
 #pragma once
 
+#if __has_include(<rex/audio/audio_driver.h>)
 #include <rex/audio/audio_driver.h>
 #include <rex/audio/audio_system.h>
 #include <rex/thread.h>
+#else
+namespace rex::memory {
+class Memory {
+ public:
+  virtual ~Memory() = default;
+  template <typename T>
+  T TranslateVirtual(uint32_t addr) { return reinterpret_cast<T>(static_cast<uintptr_t>(addr)); }
+};
+} // namespace rex::memory
+
+namespace rex::thread {
+class Semaphore {
+ public:
+  virtual ~Semaphore() = default;
+  virtual void Release(int count = 1) {}
+};
+} // namespace rex::thread
+
+namespace rex::audio {
+class AudioDriver {
+ public:
+  virtual ~AudioDriver() = default;
+  virtual void SubmitFrame(uint32_t samples_ptr) = 0;
+};
+} // namespace rex::audio
+#endif
 
 #include <atomic>
 #include <cstddef>

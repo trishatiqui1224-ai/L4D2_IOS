@@ -49,15 +49,30 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
 
 def main():
     parser = argparse.ArgumentParser(description="Package L4D2 Recomp .ipa")
-    parser.add_argument("--app", type=pathlib.Path, default=ROOT / "build" / "L4D2Recomp.app", help="Path to .app bundle")
+    parser.add_argument("--app", type=pathlib.Path, default=None, help="Path to .app bundle")
     parser.add_argument("--out", type=pathlib.Path, default=ROOT / "build" / "L4D2Recomp.ipa", help="Output .ipa path")
     args = parser.parse_args()
 
-    if not args.app.is_dir():
-        print(f"[package_ipa] Note: App bundle {args.app} not yet compiled. Tool is ready for build pipeline.")
+    app_path = args.app
+    if app_path is None or not app_path.is_dir():
+        # Auto-detect candidates
+        candidates = [
+            ROOT / "build" / "L4D2Recomp.app",
+            ROOT / "build" / "ios" / "L4D2Recomp.app",
+            ROOT / "ios" / "build" / "L4D2Recomp.app",
+        ]
+        for c in candidates:
+            if c.is_dir():
+                app_path = c
+                break
+
+    if app_path is None or not app_path.is_dir():
+        print(f"[package_ipa] Note: App bundle L4D2Recomp.app not yet compiled. Tool is ready for build pipeline.")
         sys.exit(0)
 
-    success = package_ipa(args.app, args.out)
+    success = package_ipa(app_path, args.out)
+    if not success:
+        sys.exit(1)
     if not success:
         sys.exit(1)
 

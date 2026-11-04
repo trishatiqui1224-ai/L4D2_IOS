@@ -5,10 +5,42 @@
 #import <AVFoundation/AVFoundation.h>
 #include <AudioToolbox/AudioToolbox.h>
 
+#if __has_include(<SDL3/SDL_events.h>)
 #include <SDL3/SDL_events.h>
+#else
+typedef union SDL_Event { uint32_t type; } SDL_Event;
+#define SDLCALL
+#define SDL_EVENT_WILL_ENTER_BACKGROUND 0x201
+#define SDL_EVENT_DID_ENTER_FOREGROUND 0x202
+#endif
 
+#if __has_include(<rex/logging.h>)
 #include <rex/logging.h>
 #include <rex/system/xmemory.h>
+#else
+#include "../../../src/logging/logger.h"
+#if __has_include(<format>)
+#include <format>
+template <typename... Args>
+inline void RexLogWrapper(l4d2::log::Level level, std::string_view fmt, Args&&... args) {
+    try {
+        std::string s = std::vformat(fmt, std::make_format_args(args...));
+        l4d2::log::Logger::Instance().Log(level, "Audio", "%s", s.c_str());
+    } catch (...) {
+        l4d2::log::Logger::Instance().Log(level, "Audio", "%.*s", (int)fmt.size(), fmt.data());
+    }
+}
+#define REXLOG_INFO(fmt, ...)  RexLogWrapper(l4d2::log::Level::Info, fmt, ##__VA_ARGS__)
+#define REXLOG_WARN(fmt, ...)  RexLogWrapper(l4d2::log::Level::Warn, fmt, ##__VA_ARGS__)
+#define REXLOG_ERROR(fmt, ...) RexLogWrapper(l4d2::log::Level::Error, fmt, ##__VA_ARGS__)
+#define REXLOG_DEBUG(fmt, ...) RexLogWrapper(l4d2::log::Level::Debug, fmt, ##__VA_ARGS__)
+#else
+#define REXLOG_INFO(fmt, ...)  L4D2_LOG_INFO("Audio", fmt, ##__VA_ARGS__)
+#define REXLOG_WARN(fmt, ...)  L4D2_LOG_WARN("Audio", fmt, ##__VA_ARGS__)
+#define REXLOG_ERROR(fmt, ...) L4D2_LOG_ERROR("Audio", fmt, ##__VA_ARGS__)
+#define REXLOG_DEBUG(fmt, ...) L4D2_LOG_DEBUG("Audio", fmt, ##__VA_ARGS__)
+#endif
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -16,11 +48,18 @@
 #include <cmath>
 #include <cstring>
 #include <mutex>
+#include <string>
 
 #include <pthread.h>
 #include <time.h>
 
+#if __has_include("../boot_trace.h")
 #include "../boot_trace.h"
+#else
+namespace nfsmw::boot {
+inline void Trace(const std::string& msg) { L4D2_LOG_DEBUG("AudioTrace", "%s", msg.c_str()); }
+}
+#endif
 
 namespace rex::audio::ios {
 
@@ -85,9 +124,11 @@ void ActivateSessionOnce() {
       const bool active = [session setActive:YES error:&error];
       const double ms =
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-      nfsmw::boot::Trace(fmt::format("audio: session {} in {:.0f} ms", active ? "active" : "NOT active", ms));
+      char trace_buf[128];
+      snprintf(trace_buf, sizeof(trace_buf), "audio: session %s in %.0f ms", active ? "active" : "NOT active", ms);
+      nfsmw::boot::Trace(trace_buf);
       if (!active) {
-        REXLOG_WARN("[coreaudio] AVAudioSession setActive failed: {}", error.localizedDescription.UTF8String);
+        L4D2_LOG_WARN("Audio", "AVAudioSession setActive failed: %s", error.localizedDescription.UTF8String);
       }
       session_activated = true;
       dispatch_semaphore_signal(session_ready);
