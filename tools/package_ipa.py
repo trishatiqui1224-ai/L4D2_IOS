@@ -58,6 +58,8 @@ def main():
         # Auto-detect candidates
         candidates = [
             ROOT / "build" / "L4D2Recomp.app",
+            ROOT / "build" / "Release" / "L4D2Recomp.app",
+            ROOT / "build" / "Release-iphoneos" / "L4D2Recomp.app",
             ROOT / "build" / "ios" / "L4D2Recomp.app",
             ROOT / "ios" / "build" / "L4D2Recomp.app",
         ]
@@ -66,13 +68,18 @@ def main():
                 app_path = c
                 break
 
+        if app_path is None or not app_path.is_dir():
+            for found in (ROOT / "build").glob("**/*.app"):
+                if found.is_dir():
+                    app_path = found
+                    print(f"[package_ipa] Discovered app bundle via glob: {app_path}")
+                    break
+
     if app_path is None or not app_path.is_dir():
-        print(f"[package_ipa] Note: App bundle L4D2Recomp.app not yet compiled. Tool is ready for build pipeline.")
-        sys.exit(0)
+        print(f"[ERROR] App bundle L4D2Recomp.app not found in candidates or build tree.")
+        sys.exit(1)
 
     success = package_ipa(app_path, args.out)
-    if not success:
-        sys.exit(1)
     if not success:
         sys.exit(1)
 
