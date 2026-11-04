@@ -3,8 +3,6 @@
 #import "l4d2_strings.h"
 #import <UIKit/UIKit.h>
 
-namespace l4d2::options {
-
 static UIView* s_menu_view = nil;
 static UILabel* s_perf_label = nil;
 static bool s_is_visible = false;
@@ -13,6 +11,8 @@ static bool s_is_visible = false;
 @property (nonatomic, strong) UISlider* sensSlider;
 @property (nonatomic, strong) UISegmentedControl* fpsSegment;
 @property (nonatomic, strong) UILabel* sensValueLabel;
+- (void)buildUI;
+- (void)onSensChanged:(UISlider*)slider;
 @end
 
 @implementation L4D2InGameMenu
@@ -103,9 +103,17 @@ static bool s_is_visible = false;
     editHudBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
     [editHudBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [editHudBtn addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) {
-        UIViewController* topVC = [UIApplication sharedApplication].windows.firstObject.rootViewController;
+        (void)a;
+        UIWindow* window = nil;
+        for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                window = scene.windows.firstObject;
+                if (window) break;
+            }
+        }
+        UIViewController* topVC = window.rootViewController;
         if (topVC) {
-            [topVC presentViewController:touch::MakeLayoutEditor() animated:YES completion:nil];
+            [topVC presentViewController:l4d2::touch::MakeLayoutEditor() animated:YES completion:nil];
         }
     }] forControlEvents:UIControlEventTouchUpInside];
     [panel addSubview:editHudBtn];
@@ -118,24 +126,38 @@ static bool s_is_visible = false;
     resumeBtn.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightHeavy];
     [resumeBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [resumeBtn addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) {
-        HideInGameMenu();
+        (void)a;
+        l4d2::options::HideInGameMenu();
     }] forControlEvents:UIControlEventTouchUpInside];
     [panel addSubview:resumeBtn];
 }
 
 - (void)onSensChanged:(UISlider*)slider {
     _sensValueLabel.text = [NSString stringWithFormat:@"%.1fx", slider.value];
-    touch::TouchConfig cfg;
+    l4d2::touch::TouchConfig cfg;
     cfg.look_sensitivity_x = slider.value;
     cfg.look_sensitivity_y = slider.value;
-    touch::UpdateConfig(cfg);
+    l4d2::touch::UpdateConfig(cfg);
 }
 
 @end
 
+namespace l4d2::options {
+
+static UIWindow* GetKeyWindow() {
+    for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow* w in scene.windows) {
+                if (w.isKeyWindow || scene.windows.count == 1) return w;
+            }
+        }
+    }
+    return nil;
+}
+
 void ShowInGameMenu() {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow* window = [UIApplication sharedApplication].windows.firstObject;
+        UIWindow* window = GetKeyWindow();
         if (!window) return;
 
         if (!s_menu_view) {
@@ -154,6 +176,7 @@ void HideInGameMenu() {
             [UIView animateWithDuration:0.2 animations:^{
                 s_menu_view.alpha = 0.0;
             } completion:^(BOOL finished) {
+                (void)finished;
                 [s_menu_view removeFromSuperview];
                 s_is_visible = false;
             }];
@@ -181,4 +204,3 @@ void UpdatePerformanceStats(float fps, float frame_time_ms, uint64_t ram_bytes, 
 }
 
 } // namespace l4d2::options
-

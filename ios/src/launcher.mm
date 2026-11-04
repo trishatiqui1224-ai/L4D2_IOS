@@ -11,17 +11,20 @@
 
 namespace fs = std::filesystem;
 
-namespace l4d2::launcher {
-
 static fs::path s_documents;
 static fs::path s_selected_game_root;
 static bool s_disc_verified = false;
-static i18n::Language s_language = i18n::Language::English;
+static l4d2::i18n::Language s_language = l4d2::i18n::Language::English;
 
-fs::path Documents() {
-    NSArray* paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString* docDir = paths.firstObject;
-    return fs::path(docDir.UTF8String);
+static UIWindow* GetKeyWindow() {
+    for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow* w in scene.windows) {
+                if (w.isKeyWindow || scene.windows.count == 1) return w;
+            }
+        }
+    }
+    return nil;
 }
 
 @interface L4D2LauncherVC : UIViewController <UIDocumentPickerDelegate>
@@ -34,6 +37,20 @@ fs::path Documents() {
 @property (nonatomic, strong) UISegmentedControl* tabsControl;
 @property (nonatomic, strong) UIScrollView* contentScroll;
 @property (nonatomic, strong) NSMutableDictionary* settings;
+
+- (void)loadSettings;
+- (void)saveSettings;
+- (void)checkExistingDisc;
+- (void)buildUI;
+- (void)populateTabContent:(NSInteger)tab;
+- (void)addSegmentRow:(NSString*)title key:(NSString*)key choices:(NSArray*)choices y:(CGFloat*)y scrollW:(CGFloat)w;
+- (void)addSwitchRow:(NSString*)title key:(NSString*)key y:(CGFloat*)y scrollW:(CGFloat)w;
+- (void)onLangChanged:(UISegmentedControl*)sc;
+- (void)onTabChanged:(UISegmentedControl*)sc;
+- (void)onImportTapped;
+- (void)onVerifyTapped;
+- (void)onExportLogsTapped;
+- (void)onPlayTapped;
 @end
 
 @implementation L4D2LauncherVC
@@ -76,7 +93,6 @@ fs::path Documents() {
 }
 
 - (void)checkExistingDisc {
-    // Check if disc folder or default.xex exists in Documents or bundle
     fs::path candidate = s_documents / "Left 4 Dead 2 (World) (En,Ja,Fr,De,Es,It,Pt,Zh,Ko,Pl,Ru)";
     if (!fs::exists(candidate)) {
         candidate = s_documents / "game";
@@ -84,7 +100,7 @@ fs::path Documents() {
     if (fs::exists(candidate / "default.xex")) {
         s_selected_game_root = candidate;
         s_disc_verified = true;
-        _statusBadge.text = i18n::GetText(@"verified_disc", s_language);
+        _statusBadge.text = l4d2::i18n::GetText(@"verified_disc", s_language);
         _statusBadge.backgroundColor = [UIColor colorWithRed:0.1 green:0.45 blue:0.15 alpha:0.85];
         _playButton.enabled = YES;
         _playButton.alpha = 1.0;
@@ -112,7 +128,7 @@ fs::path Documents() {
     [self.view addSubview:_titleLabel];
 
     _statusBadge = [[UILabel alloc] initWithFrame:CGRectMake(310, 24, 300, 24)];
-    _statusBadge.text = s_disc_verified ? i18n::GetText(@"verified_disc", s_language) : i18n::GetText(@"unverified_disc", s_language);
+    _statusBadge.text = s_disc_verified ? l4d2::i18n::GetText(@"verified_disc", s_language) : l4d2::i18n::GetText(@"unverified_disc", s_language);
     _statusBadge.textColor = [UIColor whiteColor];
     _statusBadge.font = [UIFont systemFontOfSize:11 weight:UIFontWeightBold];
     _statusBadge.textAlignment = NSTextAlignmentCenter;
@@ -136,7 +152,7 @@ fs::path Documents() {
     _playButton.layer.cornerRadius = 8.0;
     _playButton.layer.borderColor = [UIColor colorWithRed:0.95 green:0.25 blue:0.25 alpha:0.9].CGColor;
     _playButton.layer.borderWidth = 2.0;
-    [_playButton setTitle:i18n::GetText(@"btn_play", s_language) forState:UIControlStateNormal];
+    [_playButton setTitle:l4d2::i18n::GetText(@"btn_play", s_language) forState:UIControlStateNormal];
     _playButton.titleLabel.font = [UIFont systemFontOfSize:18 weight:UIFontWeightHeavy];
     [_playButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     _playButton.enabled = s_disc_verified;
@@ -149,7 +165,7 @@ fs::path Documents() {
     importBtn.frame = CGRectMake(24, 62, 200, 36);
     importBtn.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.85];
     importBtn.layer.cornerRadius = 6.0;
-    [importBtn setTitle:i18n::GetText(@"btn_import", s_language) forState:UIControlStateNormal];
+    [importBtn setTitle:l4d2::i18n::GetText(@"btn_import", s_language) forState:UIControlStateNormal];
     importBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     [importBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [importBtn addTarget:self action:@selector(onImportTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -159,7 +175,7 @@ fs::path Documents() {
     verifyBtn.frame = CGRectMake(234, 62, 200, 36);
     verifyBtn.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.85];
     verifyBtn.layer.cornerRadius = 6.0;
-    [verifyBtn setTitle:i18n::GetText(@"btn_verify", s_language) forState:UIControlStateNormal];
+    [verifyBtn setTitle:l4d2::i18n::GetText(@"btn_verify", s_language) forState:UIControlStateNormal];
     verifyBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     [verifyBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [verifyBtn addTarget:self action:@selector(onVerifyTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -175,10 +191,10 @@ fs::path Documents() {
 
     // Tabs Control
     NSArray* tabs = @[
-        i18n::GetText(@"tab_graphics", s_language),
-        i18n::GetText(@"tab_controls", s_language),
-        i18n::GetText(@"tab_saves", s_language),
-        i18n::GetText(@"tab_experimental", s_language)
+        l4d2::i18n::GetText(@"tab_graphics", s_language),
+        l4d2::i18n::GetText(@"tab_controls", s_language),
+        l4d2::i18n::GetText(@"tab_saves", s_language),
+        l4d2::i18n::GetText(@"tab_experimental", s_language)
     ];
     _tabsControl = [[UISegmentedControl alloc] initWithItems:tabs];
     _tabsControl.frame = CGRectMake(24, 110, w - 48, 32);
@@ -226,7 +242,8 @@ fs::path Documents() {
         editBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
         [editBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         [editBtn addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) {
-            [self presentViewController:touch::MakeLayoutEditor() animated:YES completion:nil];
+            (void)a;
+            [self presentViewController:l4d2::touch::MakeLayoutEditor() animated:YES completion:nil];
         }] forControlEvents:UIControlEventTouchUpInside];
         [_contentScroll addSubview:editBtn];
         y += 56.0;
@@ -300,7 +317,7 @@ fs::path Documents() {
 }
 
 - (void)onLangChanged:(UISegmentedControl*)sc {
-    s_language = static_cast<i18n::Language>(sc.selectedSegmentIndex);
+    s_language = static_cast<l4d2::i18n::Language>(sc.selectedSegmentIndex);
     [self buildUI];
 }
 
@@ -316,6 +333,7 @@ fs::path Documents() {
 }
 
 - (void)documentPicker:(UIDocumentPickerViewController*)controller didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
+    (void)controller;
     NSURL* url = urls.firstObject;
     if (url) {
         s_selected_game_root = fs::path(url.path.UTF8String);
@@ -329,7 +347,6 @@ fs::path Documents() {
     _statusBadge.text = @"Verifying SHA-256...";
 
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        // Verify manifest in background
         size_t total = l4d2::kDiscManifest.size();
         for (size_t i = 0; i < total; ++i) {
             float progress = (float)(i + 1) / (float)total;
@@ -339,7 +356,7 @@ fs::path Documents() {
         }
         dispatch_async(dispatch_get_main_queue(), ^{
             s_disc_verified = true;
-            self.statusBadge.text = i18n::GetText(@"verified_disc", s_language);
+            self.statusBadge.text = l4d2::i18n::GetText(@"verified_disc", s_language);
             self.statusBadge.backgroundColor = [UIColor colorWithRed:0.1 green:0.45 blue:0.15 alpha:0.85];
             self.playButton.enabled = YES;
             self.playButton.alpha = 1.0;
@@ -350,7 +367,7 @@ fs::path Documents() {
 
 - (void)onExportLogsTapped {
     std::string out_zip;
-    if (ExportLogsZip(s_documents, out_zip)) {
+    if (l4d2::launcher::ExportLogsZip(s_documents, out_zip)) {
         NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:out_zip.c_str()]];
         UIActivityViewController* act = [[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
         [self presentViewController:act animated:YES completion:nil];
@@ -364,20 +381,28 @@ fs::path Documents() {
 
 @end
 
+namespace l4d2::launcher {
+
+fs::path Documents() {
+    NSArray* paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString* docDir = paths.firstObject;
+    return fs::path(docDir.UTF8String);
+}
+
 fs::path Run(const fs::path& documents) {
     s_documents = documents;
-    UIWindow* window = [UIApplication sharedApplication].windows.firstObject;
+    UIWindow* window = GetKeyWindow();
     if (!window) return s_selected_game_root;
 
     L4D2LauncherVC* vc = [[L4D2LauncherVC alloc] init];
     window.rootViewController = vc;
     [window makeKeyAndVisible];
 
-    // Spin main run loop until PLAY is tapped and dismissed
     return s_selected_game_root;
 }
 
 std::vector<std::string> SettingsArguments(const fs::path& documents) {
+    (void)documents;
     std::vector<std::string> args;
     args.push_back("--l4d2_title_id=454108D4");
     args.push_back("--l4d2_media_id=0E79403B");
@@ -394,10 +419,8 @@ bool ExportLogsZip(const fs::path& documents, std::string& out_zip_path) {
     fs::path zip_path = documents / "l4d2_recomp_logs.zip";
     out_zip_path = zip_path.string();
 
-    // Writes boot.txt, l4d2.log, settings.json into a single diagnostic zip
     log::Logger::Instance().Flush();
     return true;
 }
 
 } // namespace l4d2::launcher
-

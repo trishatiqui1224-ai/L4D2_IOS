@@ -6,27 +6,32 @@
 #include <cmath>
 #include <vector>
 
-namespace l4d2::touch {
-
-static TouchConfig s_config;
+static l4d2::touch::TouchConfig s_config;
 static UIView* s_overlay = nil;
 static UILabel* s_fps_label = nil;
 static bool s_gamepad_connected = false;
 
 @interface L4D2TouchOverlay : UIView
-@property (nonatomic, assign) TouchConfig config;
+@property (nonatomic, assign) l4d2::touch::TouchConfig config;
 @property (nonatomic, strong) NSMutableArray<UIButton*>* actionButtons;
 @property (nonatomic, strong) NSMutableArray<UIButton*>* slotButtons;
 @property (nonatomic, strong) UIView* leftStickBase;
 @property (nonatomic, strong) UIView* leftStickThumb;
 @property (nonatomic, strong) UIView* lookArea;
 @property (nonatomic, assign) CGPoint lastLookPoint;
-@property (nonatomic, assign) NSInteger lookTouchHash;
+@property (nonatomic, assign) NSUInteger lookTouchHash;
+
+- (instancetype)initWithFrame:(CGRect)frame config:(const l4d2::touch::TouchConfig&)config;
+- (void)buildUI;
+- (void)setupGamepadObserver;
+- (void)buildShooterMode:(CGFloat)w height:(CGFloat)h;
+- (void)buildXboxPadMode:(CGFloat)w height:(CGFloat)h;
+- (UIButton*)makeButton:(NSString*)title rect:(CGRect)rect color:(UIColor*)color border:(UIColor*)borderColor;
 @end
 
 @implementation L4D2TouchOverlay
 
-- (instancetype)initWithFrame:(CGRect)frame config:(const TouchConfig&)config {
+- (instancetype)initWithFrame:(CGRect)frame config:(const l4d2::touch::TouchConfig&)config {
     if (self = [super initWithFrame:frame]) {
         _config = config;
         self.multipleTouchEnabled = YES;
@@ -47,7 +52,7 @@ static bool s_gamepad_connected = false;
     CGFloat w = bounds.size.width;
     CGFloat h = bounds.size.height;
 
-    if (_config.style == ControlStyle::L4D2ShooterMode) {
+    if (_config.style == l4d2::touch::ControlStyle::L4D2ShooterMode) {
         [self buildShooterMode:w height:h];
     } else {
         [self buildXboxPadMode:w height:h];
@@ -194,6 +199,7 @@ static bool s_gamepad_connected = false;
     [[NSNotificationCenter defaultCenter] addObserverForName:GCControllerDidConnectNotification
                                                       object:nil queue:[NSOperationQueue mainQueue]
                                                   usingBlock:^(NSNotification* note) {
+        (void)note;
         s_gamepad_connected = true;
         if (self.config.auto_hide_on_controller) {
             [UIView animateWithDuration:0.3 animations:^{ self.alpha = 0.0; }];
@@ -203,6 +209,7 @@ static bool s_gamepad_connected = false;
     [[NSNotificationCenter defaultCenter] addObserverForName:GCControllerDidDisconnectNotification
                                                       object:nil queue:[NSOperationQueue mainQueue]
                                                   usingBlock:^(NSNotification* note) {
+        (void)note;
         if ([GCController controllers].count == 0) {
             s_gamepad_connected = false;
             [UIView animateWithDuration:0.3 animations:^{ self.alpha = self.config.hud_opacity; }];
@@ -212,18 +219,20 @@ static bool s_gamepad_connected = false;
 
 // Touch Handling for Mobile Drag Look & Virtual Sticks
 - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+    (void)event;
     for (UITouch* t in touches) {
         CGPoint pt = [t locationInView:self];
         if (_config.drag_to_look && pt.x > self.bounds.size.width * 0.45 && pt.y < self.bounds.size.height * 0.85) {
-            _lookTouchHash = t.hash;
+            _lookTouchHash = (NSUInteger)t.hash;
             _lastLookPoint = pt;
         }
     }
 }
 
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+    (void)event;
     for (UITouch* t in touches) {
-        if (_config.drag_to_look && t.hash == _lookTouchHash) {
+        if (_config.drag_to_look && (NSUInteger)t.hash == _lookTouchHash) {
             CGPoint pt = [t locationInView:self];
             CGFloat dx = (pt.x - _lastLookPoint.x) * _config.look_sensitivity_x;
             CGFloat dy = (pt.y - _lastLookPoint.y) * _config.look_sensitivity_y;
@@ -237,8 +246,9 @@ static bool s_gamepad_connected = false;
 }
 
 - (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
+    (void)event;
     for (UITouch* t in touches) {
-        if (t.hash == _lookTouchHash) {
+        if ((NSUInteger)t.hash == _lookTouchHash) {
             _lookTouchHash = 0;
         }
     }
@@ -250,10 +260,23 @@ static bool s_gamepad_connected = false;
 
 @end
 
+namespace l4d2::touch {
+
+static UIWindow* GetKeyWindow() {
+    for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
+        if ([scene isKindOfClass:[UIWindowScene class]]) {
+            for (UIWindow* w in scene.windows) {
+                if (w.isKeyWindow || scene.windows.count == 1) return w;
+            }
+        }
+    }
+    return nil;
+}
+
 void Install(const TouchConfig& config) {
     s_config = config;
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow* window = [UIApplication sharedApplication].windows.firstObject;
+        UIWindow* window = GetKeyWindow();
         if (!window) return;
 
         if (s_overlay) {
@@ -266,7 +289,7 @@ void Install(const TouchConfig& config) {
 
 void InstallFpsCounter() {
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow* window = [UIApplication sharedApplication].windows.firstObject;
+        UIWindow* window = GetKeyWindow();
         if (!window) return;
 
         if (!s_fps_label) {
@@ -321,6 +344,7 @@ UIViewController* MakeLayoutEditor() {
     doneBtn.backgroundColor = [UIColor colorWithRed:0.7 green:0.1 blue:0.1 alpha:0.9];
     doneBtn.layer.cornerRadius = 8.0;
     [doneBtn addAction:[UIAction actionWithHandler:^(__kindof UIAction* a) {
+        (void)a;
         [vc dismissViewControllerAnimated:YES completion:nil];
     }] forControlEvents:UIControlEventTouchUpInside];
     [vc.view addSubview:doneBtn];
@@ -329,4 +353,3 @@ UIViewController* MakeLayoutEditor() {
 }
 
 } // namespace l4d2::touch
-

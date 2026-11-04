@@ -25,6 +25,14 @@
 #include <rex/audio/audio_system.h>
 #include <rex/thread.h>
 #else
+using X_STATUS = uint32_t;
+constexpr uint32_t X_STATUS_SUCCESS = 0;
+constexpr uint32_t X_STATUS_UNSUCCESSFUL = 0xC0000001;
+
+namespace rex::runtime {
+class FunctionDispatcher;
+} // namespace rex::runtime
+
 namespace rex::memory {
 class Memory {
  public:
@@ -38,7 +46,7 @@ namespace rex::thread {
 class Semaphore {
  public:
   virtual ~Semaphore() = default;
-  virtual void Release(int count = 1) {}
+  virtual bool Release(int32_t count = 1, int32_t* out_previous = nullptr) { (void)count; (void)out_previous; return true; }
 };
 } // namespace rex::thread
 
@@ -47,6 +55,17 @@ class AudioDriver {
  public:
   virtual ~AudioDriver() = default;
   virtual void SubmitFrame(uint32_t samples_ptr) = 0;
+};
+
+class AudioSystem {
+ public:
+  explicit AudioSystem(rex::runtime::FunctionDispatcher* dispatcher) { (void)dispatcher; }
+  virtual ~AudioSystem() = default;
+  virtual X_STATUS CreateDriver(size_t index, rex::thread::Semaphore* semaphore,
+                                AudioDriver** out_driver) = 0;
+  virtual void DestroyDriver(AudioDriver* driver) = 0;
+ protected:
+  rex::memory::Memory* memory_ = nullptr;
 };
 } // namespace rex::audio
 #endif
