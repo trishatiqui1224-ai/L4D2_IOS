@@ -238,3 +238,4 @@ inline NSString* GetText(NSString* key, Language lang) {
 }
 
 } // namespace l4d2::i18n
+

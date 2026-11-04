@@ -154,3 +154,4 @@ def generate_configs():
 
 if __name__ == "__main__":
     generate_configs()
+

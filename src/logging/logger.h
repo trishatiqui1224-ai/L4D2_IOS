@@ -50,3 +50,4 @@ private:
 #define L4D2_LOG_FATAL(mod, fmt, ...) l4d2::log::Logger::Instance().Log(l4d2::log::Level::Fatal, mod, fmt, ##__VA_ARGS__)
 
 } // namespace l4d2::log
+

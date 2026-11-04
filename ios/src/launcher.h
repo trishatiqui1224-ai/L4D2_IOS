@@ -24,3 +24,4 @@ std::vector<std::string> SettingsArguments(const std::filesystem::path& document
 bool ExportLogsZip(const std::filesystem::path& documents, std::string& out_zip_path);
 
 } // namespace l4d2::launcher
+

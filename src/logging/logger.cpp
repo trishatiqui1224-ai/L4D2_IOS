@@ -117,3 +117,4 @@ void Logger::Flush() {
 }
 
 } // namespace l4d2::log
+

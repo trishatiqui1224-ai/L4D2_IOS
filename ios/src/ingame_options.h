@@ -13,3 +13,4 @@ bool IsMenuVisible();
 void UpdatePerformanceStats(float fps, float frame_time_ms, uint64_t ram_bytes, int thermal_state);
 
 } // namespace l4d2::options
+

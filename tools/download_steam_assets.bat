@@ -16,3 +16,4 @@ echo [L4D2 Recomp] high-resolution UI fonts and uncompressed sound caches.
 :done
 echo [L4D2 Recomp] Setup completed.
 exit /b 0
+

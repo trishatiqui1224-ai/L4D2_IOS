@@ -76,3 +76,4 @@ python3 "${SCRIPT_DIR}/tools/package_ipa.py" --app "${BUILD_DIR}/L4D2Recomp.app"
 echo -e "\n${BOLD}${GREEN}======================================================================${RESET}"
 echo -e "${BOLD}${GREEN}  BUILD SUCCESSFUL: ${IPA_OUTPUT}${RESET}"
 echo -e "${BOLD}${GREEN}======================================================================${RESET}"
+

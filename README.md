@@ -97,3 +97,4 @@ chmod +x build_ipa.sh
 ```
 
 The resulting `L4D2-Recomp-iOS.ipa` can be installed on iOS 16.0+ devices via AltStore, SideStore, TrollStore, or Xcode.
+

@@ -181,3 +181,4 @@ void UpdatePerformanceStats(float fps, float frame_time_ms, uint64_t ram_bytes, 
 }
 
 } // namespace l4d2::options
+

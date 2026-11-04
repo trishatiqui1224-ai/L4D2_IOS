@@ -79,3 +79,4 @@ void ResolutionManager::LogResolveWarningOnce(uint32_t sample_select, uint32_t m
 }
 
 } // namespace l4d2
+

@@ -42,3 +42,4 @@ int main() {
     std::cout << "[test_manifest_verifier] ALL MANIFEST ASSERTIONS PASSED!" << std::endl;
     return 0;
 }
+

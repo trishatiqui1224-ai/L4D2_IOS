@@ -400,3 +400,4 @@ bool ExportLogsZip(const fs::path& documents, std::string& out_zip_path) {
 }
 
 } // namespace l4d2::launcher
+

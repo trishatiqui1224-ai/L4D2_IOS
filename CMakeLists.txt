@@ -40,3 +40,4 @@ else()
     target_include_directories(test_manifest_verifier PRIVATE src)
     add_test(NAME test_manifest_verifier COMMAND test_manifest_verifier)
 endif()
+

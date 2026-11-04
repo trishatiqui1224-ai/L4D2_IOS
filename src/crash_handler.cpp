@@ -139,3 +139,4 @@ void CrashHandler::Install() {
 #endif
 
 } // namespace l4d2
+
