@@ -248,7 +248,27 @@ LOG_PATH_NEW = '''std::filesystem::path NextSequentialLogPath(const std::filesys
   std::error_code log_ec;
   std::filesystem::create_directories(logs_dir, log_ec);'''
 
+TYPES_ANCHOR = '''    using uint_t = std::conditional_t<sizeof(T) == 8, uint64_t,
+                                      std::conditional_t<sizeof(T) == 4, uint32_t, uint16_t>>;
+    return std::bit_cast<T>(std::byteswap(std::bit_cast<uint_t>(value)));'''
+
+TYPES_NEW = '''    using uint_t = std::conditional_t<sizeof(T) == 8, uint64_t,
+                                      std::conditional_t<sizeof(T) == 4, uint32_t, uint16_t>>;
+#if defined(__clang__) || defined(__GNUC__)
+    auto u = std::bit_cast<uint_t>(value);
+    if constexpr (sizeof(T) == 2) {
+      return std::bit_cast<T>(static_cast<uint16_t>(__builtin_bswap16(static_cast<uint16_t>(u))));
+    } else if constexpr (sizeof(T) == 4) {
+      return std::bit_cast<T>(static_cast<uint32_t>(__builtin_bswap32(static_cast<uint32_t>(u))));
+    } else if constexpr (sizeof(T) == 8) {
+      return std::bit_cast<T>(static_cast<uint64_t>(__builtin_bswap64(static_cast<uint64_t>(u))));
+    }
+#else
+    return std::bit_cast<T>(std::byteswap(std::bit_cast<uint_t>(value)));
+#endif'''
+
 BLOCKS = [
+    ("include/rex/types.h", "portable __builtin_bswap fallback for byte_swap", TYPES_ANCHOR, TYPES_NEW),
     ("src/core/filesystem_posix.cpp", "include dlfcn.h", DLFCN_ANCHOR, DLFCN_NEW),
     ("src/core/filesystem_posix.cpp", "GetExecutableFolder() is Frameworks/", FOLDER_ANCHOR,
      FOLDER_NEW),
