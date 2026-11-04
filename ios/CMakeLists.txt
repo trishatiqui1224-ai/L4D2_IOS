@@ -77,35 +77,95 @@ set(REXGLUE_ENABLE_DESKTOP_SDL_BACKENDS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${L4D2_SDK}" rexglue-sdk)
 
 # =============================================================================
+# 1.5. Common ReXGlue & Thirdparty Header Configuration
+# =============================================================================
+add_library(l4d2_headers INTERFACE)
+target_include_directories(l4d2_headers INTERFACE
+    "${L4D2_ROOT}"
+    "${L4D2_SRC}"
+    "${L4D2_GEN_DIR}"
+    "${L4D2_SDK}/include"
+    "${L4D2_SDK}/src"
+    "${L4D2_SDK}/thirdparty"
+    "${L4D2_SDK}/thirdparty/fmt/include"
+    "${L4D2_SDK}/thirdparty/spdlog/include"
+    "${L4D2_SDK}/thirdparty/xxHash"
+    "${L4D2_SDK}/thirdparty/simde"
+    "${L4D2_SDK}/thirdparty/vulkan-headers/include"
+    "${L4D2_SDK}/thirdparty/vulkan-memory-allocator/include"
+    "${L4D2_SDK}/thirdparty/tomlplusplus/include"
+    "${L4D2_SDK}/thirdparty/utfcpp/source"
+)
+
+if(TARGET fmt::fmt)
+    target_link_libraries(l4d2_headers INTERFACE fmt::fmt)
+elseif(TARGET fmt)
+    target_link_libraries(l4d2_headers INTERFACE fmt)
+endif()
+
+if(TARGET spdlog::spdlog)
+    target_link_libraries(l4d2_headers INTERFACE spdlog::spdlog)
+elseif(TARGET spdlog)
+    target_link_libraries(l4d2_headers INTERFACE spdlog)
+endif()
+
+if(TARGET Vulkan::Headers)
+    target_link_libraries(l4d2_headers INTERFACE Vulkan::Headers)
+endif()
+
+if(TARGET GPUOpen::VulkanMemoryAllocator)
+    target_link_libraries(l4d2_headers INTERFACE GPUOpen::VulkanMemoryAllocator)
+endif()
+
+if(TARGET spirv-tools-headers)
+    target_link_libraries(l4d2_headers INTERFACE spirv-tools-headers)
+endif()
+
+if(TARGET rex::runtime)
+    target_link_libraries(l4d2_headers INTERFACE rex::runtime)
+elseif(TARGET rexruntime)
+    target_link_libraries(l4d2_headers INTERFACE rexruntime)
+endif()
+
+# =============================================================================
 # 2. Build All 19 Static Recompilation Module Libraries
 # =============================================================================
-set(L4D2_MODULE_NAMES
-    default
-    engine_360
-    client_360
-    server_360
-    materialsystem_360
-    shaderapidx9_360
-    stdshader_dx9_360
-    studiorender_360
-    vphysics_360
-    soundemittersystem_360
-    datacache_360
-    scenefilecache_360
-    vgui2_360
-    vguimatsurface_360
-    inputsystem_360
-    filesystem_stdio_360
-    vstdlib_360
-    tier0_360
-    matchmaking_360
+set(L4D2_MODULE_SPECS
+    "default:default:default"
+    "engine_360:engine_360:engine"
+    "client_360:client_360:client"
+    "server_360:server_360:server"
+    "materialsystem_360:MaterialSystem_360:materialsystem"
+    "shaderapidx9_360:shaderapidx9_360:shaderapidx9"
+    "stdshader_dx9_360:stdshader_dx9_360:stdshader_dx9"
+    "studiorender_360:StudioRender_360:studiorender"
+    "vphysics_360:vphysics_360:vphysics"
+    "soundemittersystem_360:SoundEmitterSystem_360:soundemitter"
+    "datacache_360:datacache_360:datacache"
+    "scenefilecache_360:SceneFileCache_360:scenefilecache"
+    "vgui2_360:vgui2_360:vgui2"
+    "vguimatsurface_360:vguimatsurface_360:vguimatsurface"
+    "inputsystem_360:inputsystem_360:inputsystem"
+    "filesystem_stdio_360:FileSystem_Stdio_360:filesystem"
+    "vstdlib_360:vstdlib_360:vstdlib"
+    "tier0_360:tier0_360:tier0"
+    "matchmaking_360:matchmaking_360:matchmaking"
 )
 
 set(RECOMP_LIBS "")
 set(FORCE_LOAD_FLAGS "")
 
-foreach(mod ${L4D2_MODULE_NAMES})
-    set(_mod_dir "${L4D2_GEN_DIR}/${mod}")
+foreach(spec ${L4D2_MODULE_SPECS})
+    string(REPLACE ":" ";" spec_list ${spec})
+    list(GET spec_list 0 mod_target)
+    list(GET spec_list 1 mod_dir_name)
+    list(GET spec_list 2 mod_prefix)
+
+    set(_mod_dir "${L4D2_GEN_DIR}/${mod_dir_name}")
+    if(NOT EXISTS "${_mod_dir}")
+        set(_mod_dir "${L4D2_GEN_DIR}/${mod_target}")
+    endif()
+
     set(_mod_sources "${_mod_dir}/sources.cmake")
     if(NOT EXISTS "${_mod_sources}")
         message(FATAL_ERROR "Missing recompiled C++ sources or runtime frameworks! Module ${_mod_sources} does not exist.")
@@ -115,22 +175,39 @@ foreach(mod ${L4D2_MODULE_NAMES})
         message(FATAL_ERROR "Missing recompiled C++ sources or runtime frameworks! GENERATED_SOURCES is empty in ${_mod_sources}.")
     endif()
 
-    set(_target "l4d2_${mod}_recomp")
+    set(_target "l4d2_${mod_target}_recomp")
     add_library(${_target} STATIC ${GENERATED_SOURCES})
     target_include_directories(${_target} PRIVATE
         "${_mod_dir}"
-        "${L4D2_GEN_DIR}"
-        "${L4D2_ROOT}"
-        "${L4D2_SRC}"
-        "${L4D2_SDK}/include"
-        "${L4D2_SDK}/src"
+        "${L4D2_SDK}/thirdparty/fmt/include"
+        "${L4D2_SDK}/thirdparty/spdlog/include"
+        "${L4D2_SDK}/thirdparty/xxHash"
+        "${L4D2_SDK}/thirdparty/simde"
+        "${L4D2_SDK}/thirdparty/vulkan-headers/include"
+        "${L4D2_SDK}/thirdparty/vulkan-memory-allocator/include"
+        "${L4D2_SDK}/thirdparty/tomlplusplus/include"
+        "${L4D2_SDK}/thirdparty/utfcpp/source"
     )
+    target_link_libraries(${_target} PUBLIC l4d2_headers)
+    if(TARGET rex::runtime)
+        target_link_libraries(${_target} PUBLIC rex::runtime)
+    elseif(TARGET rexruntime)
+        target_link_libraries(${_target} PUBLIC rexruntime)
+    endif()
+
     target_compile_definitions(${_target} PRIVATE
         REX_PLATFORM_IOS=1
         __APPLE__=1
         _LIBCPP_DISABLE_AVAILABILITY=1
     )
     target_compile_options(${_target} PRIVATE -gline-tables-only -Wno-unused-variable -O2)
+
+    # Function registration tables compile much faster and use less RAM at -O1
+    if(EXISTS "${_mod_dir}/l4d2_${mod_prefix}_register.cpp")
+        set_source_files_properties("${_mod_dir}/l4d2_${mod_prefix}_register.cpp"
+            PROPERTIES COMPILE_OPTIONS "-O1")
+    endif()
+
     list(APPEND RECOMP_LIBS ${_target})
     list(APPEND FORCE_LOAD_FLAGS "-Wl,-force_load,$<TARGET_FILE:${_target}>")
 endforeach()
@@ -161,6 +238,11 @@ set_target_properties(L4D2Recomp PROPERTIES
     XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
 )
 
+target_compile_options(L4D2Recomp PRIVATE
+    $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-gline-tables-only>
+)
+
 target_include_directories(L4D2Recomp PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${L4D2_SRC}"
@@ -168,6 +250,14 @@ target_include_directories(L4D2Recomp PRIVATE
     "${L4D2_GEN_DIR}"
     "${L4D2_SDK}/include"
     "${L4D2_SDK}/src"
+    "${L4D2_SDK}/thirdparty/fmt/include"
+    "${L4D2_SDK}/thirdparty/spdlog/include"
+    "${L4D2_SDK}/thirdparty/xxHash"
+    "${L4D2_SDK}/thirdparty/simde"
+    "${L4D2_SDK}/thirdparty/vulkan-headers/include"
+    "${L4D2_SDK}/thirdparty/vulkan-memory-allocator/include"
+    "${L4D2_SDK}/thirdparty/tomlplusplus/include"
+    "${L4D2_SDK}/thirdparty/utfcpp/source"
 )
 
 target_compile_definitions(L4D2Recomp PRIVATE
@@ -179,6 +269,7 @@ target_compile_definitions(L4D2Recomp PRIVATE
 
 # Apple ld64 force-loads every static recompilation library to prevent dead-stripping
 target_link_libraries(L4D2Recomp PRIVATE
+    l4d2_headers
     ${FORCE_LOAD_FLAGS}
     ${RECOMP_LIBS}
     "-framework UIKit"
@@ -199,7 +290,7 @@ elseif(TARGET rexruntime)
 endif()
 
 if(TARGET rexgpu-xenos)
-    target_link_libraries(L4D2Recomp PRIVATE rexgpu-xenos)
+    add_dependencies(L4D2Recomp rexgpu-xenos)
 endif()
 
 # App Bundle Properties
