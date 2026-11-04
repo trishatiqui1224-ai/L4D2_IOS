@@ -1,0 +1,12 @@
+name: Test Runner
+on:
+  workflow_dispatch:
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Runner
+        run: |
+          echo "Linux runner works!"
+          uname -a
