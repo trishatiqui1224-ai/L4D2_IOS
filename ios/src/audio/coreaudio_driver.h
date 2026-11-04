@@ -20,6 +20,12 @@
 
 #pragma once
 
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+
 #if __has_include(<rex/audio/audio_driver.h>)
 #include <rex/audio/audio_driver.h>
 #include <rex/audio/audio_system.h>
@@ -53,8 +59,11 @@ class Semaphore {
 namespace rex::audio {
 class AudioDriver {
  public:
+  explicit AudioDriver(rex::memory::Memory* memory = nullptr) : memory_(memory) {}
   virtual ~AudioDriver() = default;
   virtual void SubmitFrame(uint32_t samples_ptr) = 0;
+ protected:
+  rex::memory::Memory* memory_ = nullptr;
 };
 
 class AudioSystem {
@@ -69,12 +78,6 @@ class AudioSystem {
 };
 } // namespace rex::audio
 #endif
-
-#include <atomic>
-#include <cstddef>
-#include <cstdint>
-#include <memory>
-#include <mutex>
 
 // The AudioUnit types, without pulling AudioToolbox into every includer.
 typedef struct OpaqueAudioComponentInstance* AudioComponentInstance;

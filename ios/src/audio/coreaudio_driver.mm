@@ -9,9 +9,12 @@
 #include <SDL3/SDL_events.h>
 #else
 typedef union SDL_Event { uint32_t type; } SDL_Event;
+typedef bool (*SDL_EventFilter)(void* userdata, SDL_Event* event);
 #define SDLCALL
 #define SDL_EVENT_WILL_ENTER_BACKGROUND 0x201
 #define SDL_EVENT_DID_ENTER_FOREGROUND 0x202
+inline bool SDL_AddEventWatch(SDL_EventFilter filter, void* userdata) { (void)filter; (void)userdata; return true; }
+inline void SDL_RemoveEventWatch(SDL_EventFilter filter, void* userdata) { (void)filter; (void)userdata; }
 #endif
 
 #if __has_include(<rex/logging.h>)
@@ -297,8 +300,10 @@ void CoreAudioDriver::SubmitFrame(uint32_t samples_ptr) {
   if (memory_) {
     frame_data = memory_->TranslateVirtual<uint8_t*>(samples_ptr);
     if (!frame_data) {
-      frame_data = TranslatePhysical(samples_ptr);
+      frame_data = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(samples_ptr));
     }
+  } else {
+    frame_data = reinterpret_cast<uint8_t*>(static_cast<uintptr_t>(samples_ptr));
   }
   if (!frame_data) {
     return;
