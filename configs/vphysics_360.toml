@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: vphysics_360
+# Source binary: bin\vphysics_360.dll
+# Target virtual address range: 0x82200000 - 0x82330030 (1.19 MB)
+
+[project]
+name = "vphysics_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "vphysics_360.dll"
+file_path = "bin/vphysics_360.dll"
+image_base = "0x82200000"
+image_size = "0x00130030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x82200000"
+out_directory_path = "generated/vphysics_360"
+
+# Total functions discovered via .pdata + relocations: 2170
+[entrypoint.functions]
+"0x82420000" = { end = "0x8242007C" }
+"0x82420120" = { end = "0x824201C4" }
+"0x82420260" = { end = "0x82420374" }
+"0x82420378" = { end = "0x824203B4" }
+"0x824203B8" = { end = "0x824204CC" }
+"0x824204D0" = { end = "0x824205E4" }
+"0x824205E8" = { end = "0x82420630" }
+"0x82420658" = { end = "0x82420694" }
+"0x82420698" = { end = "0x824208A0" }
+"0x824208A0" = { end = "0x82420964" }
+"0x82420968" = { end = "0x82420BCC" }
+"0x82420BD0" = { end = "0x82420CEC" }
+"0x82420CF8" = { end = "0x82420D6C" }
+"0x82420E00" = { end = "0x82420E70" }
+"0x82420E70" = { end = "0x82420F30" }
+"0x82420F30" = { end = "0x82421130" }
+"0x82421130" = { end = "0x82421830" }
+"0x82421830" = { end = "0x824218E4" }
+"0x824218E8" = { end = "0x82421B24" }
+"0x82421B38" = { end = "0x82421B78" }
+"0x82421C18" = { end = "0x82421CF0" }
+"0x82421D20" = { end = "0x82421D94" }
+"0x82421D98" = { end = "0x82421E24" }
+"0x82421E28" = { end = "0x82421EDC" }
+"0x82421EE0" = { end = "0x82421F38" }
+"0x82421F38" = { end = "0x82421FB4" }
+"0x82421FB8" = { end = "0x82421FF4" }
+"0x82421FF8" = { end = "0x82422040" }
+"0x82422068" = { end = "0x824220DC" }
+"0x824220E0" = { end = "0x82422174" }
+"0x82422178" = { end = "0x824221C8" }
+"0x824221C8" = { end = "0x82422278" }
+"0x82422278" = { end = "0x82422318" }
+"0x82422360" = { end = "0x824223C4" }
+"0x824223C8" = { end = "0x82422434" }
+"0x82422458" = { end = "0x82422484" }
+"0x824224A8" = { end = "0x82422544" }
+"0x824226D8" = { end = "0x824226FC" }
+"0x82422920" = { end = "0x824229C4" }
+"0x824229C8" = { end = "0x82422AA0" }
+"0x82422AA0" = { end = "0x82422CEC" }
+"0x82422CF0" = { end = "0x82422DF4" }
+"0x82422DF8" = { end = "0x82422E9C" }
+"0x82422EA0" = { end = "0x82422F54" }
+"0x82422F58" = { end = "0x8242343C" }
+"0x82423440" = { end = "0x82423540" }
+"0x82423540" = { end = "0x8242373C" }
+"0x82423740" = { end = "0x82423944" }
+"0x82423AF8" = { end = "0x82423B94" }
+"0x82423CB8" = { end = "0x82423D4C" }

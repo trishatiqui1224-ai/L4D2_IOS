@@ -1,0 +1,58 @@
+workflows:
+  build-l4d2-recomp-ios:
+    name: Build Left 4 Dead 2 Recomp iOS (ARM64)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      vars:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+    triggering:
+      events:
+        - push
+        - tag
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+        - pattern: 'master'
+          include: true
+      tag_patterns:
+        - pattern: 'v*'
+          include: true
+    scripts:
+      - name: Select Xcode & Verify Toolchain
+        script: |
+          echo "[CI] Selecting active Xcode..."
+          xcodebuild -version
+          xcrun --sdk iphoneos --find clang
+          xcrun --sdk iphoneos --find clang++
+
+      - name: Install Python Dependencies & Tools
+        script: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install pillow
+          brew install cmake ninja
+
+      - name: Setup AppIcon & Assets Catalog
+        script: |
+          python3 tools/generate_appicon.py
+
+      - name: Verify Disc Manifest & Generate Headers
+        script: |
+          python3 tools/verify_assets.py --gen-header
+
+      - name: Run Host Unit Tests
+        script: |
+          clang++ -std=c++20 tools/test_argv_dedup.cpp -o test_argv_dedup
+          ./test_argv_dedup
+          clang++ -std=c++20 tools/test_manifest_verifier.cpp -o test_manifest_verifier
+          ./test_manifest_verifier
+
+      - name: Configure and Build iOS Target
+        script: |
+          chmod +x build_ipa.sh
+          ./build_ipa.sh
+
+    artifacts:
+      - build/L4D2-Recomp-iOS.ipa
+      - build/L4D2Recomp.app

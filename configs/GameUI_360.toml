@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: GameUI_360
+# Source binary: bin\GameUI_360.dll
+# Target virtual address range: 0x84000000 - 0x841A0030 (1.63 MB)
+
+[project]
+name = "GameUI_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "GameUI_360.dll"
+file_path = "bin/GameUI_360.dll"
+image_base = "0x84000000"
+image_size = "0x001A0030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x84000000"
+out_directory_path = "generated/GameUI_360"
+
+# Total functions discovered via .pdata + relocations: 4031
+[entrypoint.functions]
+"0x86040050" = { end = "0x860400B4" }
+"0x860400C8" = { end = "0x8604012C" }
+"0x86040130" = { end = "0x86040178" }
+"0x86040188" = { end = "0x860401F0" }
+"0x86040280" = { end = "0x86040358" }
+"0x86040358" = { end = "0x860403A8" }
+"0x86040468" = { end = "0x860405DC" }
+"0x860405F0" = { end = "0x86040664" }
+"0x86040668" = { end = "0x86040704" }
+"0x86040708" = { end = "0x860407B8" }
+"0x860407B8" = { end = "0x86040814" }
+"0x86040878" = { end = "0x860408E8" }
+"0x86040900" = { end = "0x860409A4" }
+"0x860409A8" = { end = "0x860409EC" }
+"0x860409F0" = { end = "0x86040A68" }
+"0x86040A68" = { end = "0x86040AE0" }
+"0x86040AF0" = { end = "0x86040B78" }
+"0x86040B78" = { end = "0x86040CA8" }
+"0x86040CC0" = { end = "0x86040CF4" }
+"0x86040CF8" = { end = "0x86040D1C" }
+"0x86040D20" = { end = "0x86040D54" }
+"0x86040D68" = { end = "0x86041130" }
+"0x86041130" = { end = "0x860411C4" }
+"0x860411C8" = { end = "0x860412BC" }
+"0x860412D0" = { end = "0x86041424" }
+"0x86041428" = { end = "0x860414BC" }
+"0x860414C0" = { end = "0x86041534" }
+"0x86041538" = { end = "0x860415F0" }
+"0x860415F0" = { end = "0x86041660" }
+"0x86041660" = { end = "0x860416C0" }
+"0x860416C0" = { end = "0x86041744" }
+"0x86041748" = { end = "0x860417A0" }
+"0x860417A0" = { end = "0x860417F8" }
+"0x860417F8" = { end = "0x86041850" }
+"0x86041850" = { end = "0x860418FC" }
+"0x86041928" = { end = "0x86041994" }
+"0x860419B8" = { end = "0x86041A0C" }
+"0x86041A48" = { end = "0x86041A98" }
+"0x86041A98" = { end = "0x86041BE4" }
+"0x86041BE8" = { end = "0x86041CC0" }
+"0x86041CC0" = { end = "0x86041CF4" }
+"0x86041CF8" = { end = "0x86041D28" }
+"0x86041D28" = { end = "0x86041DA0" }
+"0x86041DA0" = { end = "0x86041E18" }
+"0x86041E18" = { end = "0x86041E90" }
+"0x86041E90" = { end = "0x86041F30" }
+"0x86041F30" = { end = "0x86041FCC" }
+"0x86041FD0" = { end = "0x86042044" }
+"0x86042048" = { end = "0x860420BC" }
+"0x860420C0" = { end = "0x8604219C" }

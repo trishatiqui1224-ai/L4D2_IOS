@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: MaterialSystem_360
+# Source binary: bin\MaterialSystem_360.dll
+# Target virtual address range: 0x84900000 - 0x84A10050 (1.06 MB)
+
+[project]
+name = "MaterialSystem_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "MaterialSystem_360.dll"
+file_path = "bin/MaterialSystem_360.dll"
+image_base = "0x84900000"
+image_size = "0x00110050"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x84900000"
+out_directory_path = "generated/MaterialSystem_360"
+
+# Total functions discovered via .pdata + relocations: 1866
+[entrypoint.functions]
+"0x87220090" = { end = "0x87220134" }
+"0x872201B0" = { end = "0x8722084C" }
+"0x87220850" = { end = "0x8722093C" }
+"0x87220940" = { end = "0x872209EC" }
+"0x872209F0" = { end = "0x87220A54" }
+"0x87220A58" = { end = "0x87220AF4" }
+"0x87220B48" = { end = "0x87220BAC" }
+"0x87220BF0" = { end = "0x87220C2C" }
+"0x87220C30" = { end = "0x87220CB4" }
+"0x87220CB8" = { end = "0x87220DE8" }
+"0x87220DE8" = { end = "0x87220E48" }
+"0x87220E48" = { end = "0x87220EA4" }
+"0x87220EA8" = { end = "0x87220FDC" }
+"0x87221320" = { end = "0x872213C4" }
+"0x872213C8" = { end = "0x8722140C" }
+"0x87221410" = { end = "0x872214B8" }
+"0x872214B8" = { end = "0x87221564" }
+"0x87221568" = { end = "0x87221610" }
+"0x87221678" = { end = "0x87221728" }
+"0x87221858" = { end = "0x87221904" }
+"0x87221908" = { end = "0x872219C8" }
+"0x872219C8" = { end = "0x87221A30" }
+"0x87221A30" = { end = "0x87221DE8" }
+"0x87221DE8" = { end = "0x87221F04" }
+"0x87221F08" = { end = "0x87221F70" }
+"0x87221F70" = { end = "0x87221FDC" }
+"0x87221FE0" = { end = "0x872220AC" }
+"0x872220B0" = { end = "0x87222144" }
+"0x87222148" = { end = "0x8722220C" }
+"0x87222210" = { end = "0x8722224C" }
+"0x87222270" = { end = "0x87222304" }
+"0x87222308" = { end = "0x87222518" }
+"0x87222518" = { end = "0x872225C4" }
+"0x872225C8" = { end = "0x872226C0" }
+"0x872226C0" = { end = "0x8722289C" }
+"0x872228A0" = { end = "0x87222A70" }
+"0x87222A70" = { end = "0x87222C60" }
+"0x87222C60" = { end = "0x87222DB0" }
+"0x87222DB0" = { end = "0x87222F40" }
+"0x87222F40" = { end = "0x87223304" }
+"0x87223308" = { end = "0x87223778" }
+"0x87223778" = { end = "0x872237D8" }
+"0x872237D8" = { end = "0x872239FC" }
+"0x87223A00" = { end = "0x87223A84" }
+"0x87223A88" = { end = "0x87223B5C" }
+"0x87223B60" = { end = "0x87223C18" }
+"0x87223E40" = { end = "0x87223EAC" }
+"0x87223EB0" = { end = "0x87223F1C" }
+"0x87223F20" = { end = "0x87223F94" }
+"0x87223F98" = { end = "0x8722400C" }

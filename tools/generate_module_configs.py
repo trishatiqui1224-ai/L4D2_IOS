@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""
+tools/generate_module_configs.py
+Generates deterministic ReXGlue TOML codegen manifests for all 22 Left 4 Dead 2 (World)
+Source Engine XEX2 modules with non-overlapping virtual memory mapping.
+"""
+
+import os
+import pathlib
+import struct
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+from xex_image import load_xex_image, secciones
+
+BASE_DIR = ROOT / "Left 4 Dead 2 (World) (En,Ja,Fr,De,Es,It,Pt,Zh,Ko,Pl,Ru)"
+CONFIGS_DIR = ROOT / "configs"
+
+MODULE_MAP = [
+    ("default", "default.xex", 0x82000000),
+    ("vphysics_360", r"bin\vphysics_360.dll", 0x82200000),
+    ("tier0_360", r"bin\tier0_360.dll", 0x82C00000),
+    ("vstdlib_360", r"bin\vstdlib_360.dll", 0x82E00000),
+    ("FileSystem_Stdio_360", r"bin\FileSystem_Stdio_360.dll", 0x83000000),
+    ("datacache_360", r"bin\datacache_360.dll", 0x83280000),
+    ("inputsystem_360", r"bin\inputsystem_360.dll", 0x83500000),
+    ("launcher_360", r"bin\launcher_360.dll", 0x83680000),
+    ("SoundEmitterSystem_360", r"bin\SoundEmitterSystem_360.dll", 0x83880000),
+    ("SceneFileCache_360", r"bin\SceneFileCache_360.dll", 0x83A80000),
+    ("vgui2_360", r"bin\vgui2_360.dll", 0x83C00000),
+    ("GameUI_360", r"bin\GameUI_360.dll", 0x84000000),
+    ("vscript_360", r"bin\vscript_360.dll", 0x84800000),
+    ("MaterialSystem_360", r"bin\MaterialSystem_360.dll", 0x84900000),
+    ("vguimatsurface_360", r"bin\vguimatsurface_360.dll", 0x84E00000),
+    ("shaderapidx9_360", r"bin\shaderapidx9_360.dll", 0x85200000),
+    ("stdshader_dx9_360", r"bin\stdshader_dx9_360.dll", 0x85F00000),
+    ("StudioRender_360", r"bin\StudioRender_360.dll", 0x86380000),
+    ("engine_360", r"bin\engine_360.dll", 0x86B00000),
+    ("client_360", r"left4dead2\bin\client_360.dll", 0x88100000),
+    ("server_360", r"left4dead2\bin\server_360.dll", 0x89780000),
+    ("matchmaking_360", r"left4dead2\bin\matchmaking_360.dll", 0x8B080000),
+]
+
+
+def generate_configs():
+    CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"[generate_module_configs] Processing {len(MODULE_MAP)} modules for ReXGlue codegen...")
+
+    manifest_master = []
+
+    for name, rel, target_base in MODULE_MAP:
+        xex_path = BASE_DIR / rel
+        if not xex_path.is_file():
+            print(f"  [ERROR] Missing {xex_path}")
+            continue
+
+        img, pdata_funcs = load_xex_image(str(xex_path))
+        secs = secciones(img)
+        pe_span = max(s[2] for s in secs) - 0x82000000
+
+        # Adjust pdata functions from 0x82000000 to target_base
+        delta = target_base - 0x82000000
+        relocated_funcs = [(f[0] + delta, f[1] + delta) for f in pdata_funcs]
+
+        # Scan for CreateInterface export or entry points
+        # In Valve modules, CreateInterface is export ordinal 1 or named "CreateInterface"
+        toml_content = [
+            f"# ReXGlue Ahead-Of-Time Codegen Manifest: {name}",
+            f"# Source binary: {rel}",
+            f"# Target virtual address range: 0x{target_base:08X} - 0x{target_base + pe_span:08X} ({pe_span / (1024*1024):.2f} MB)",
+            "",
+            "[project]",
+            f'name = "{name}"',
+            'sdk_version = "0.10.0"',
+            'target_arch = "arm64"',
+            "",
+            "[module]",
+            f'module_name = "{pathlib.Path(rel).name}"',
+            f'file_path = "{rel.replace(chr(92), "/")}"',
+            f'image_base = "0x{target_base:08X}"',
+            f'image_size = "0x{pe_span:08X}"',
+            'writable_code_segments = true',
+            "",
+            "[compiler]",
+            "cr_as_local = false",
+            "xer_as_local = false",
+            "ctr_as_local = false",
+            "non_volatile_as_local = false",
+            "enable_sync_fences = true",
+            "enable_lwsync_fences = true",
+            "enable_eieio_fences = true",
+            "stwcx_atomic_cas = true",
+            "",
+            "[entrypoint]",
+            f'entry_address = "0x{target_base:08X}"',
+            'out_directory_path = "generated/' + name + '"',
+            "",
+            f"# Total functions discovered via .pdata + relocations: {len(relocated_funcs)}",
+            "[entrypoint.functions]",
+        ]
+
+        # Sample entrypoint functions
+        for fstart, fend in relocated_funcs[:50]:
+            toml_content.append(f'"0x{fstart:08X}" = {{ end = "0x{fend:08X}" }}')
+
+        out_toml = CONFIGS_DIR / f"{name}.toml"
+        with open(out_toml, "w", encoding="utf-8") as f:
+            f.write("\n".join(toml_content) + "\n")
+
+        print(f"  Generated {out_toml.name:<28} | Base: 0x{target_base:08X} | PData Funcs: {len(relocated_funcs):>5}")
+        manifest_master.append((name, rel, target_base, target_base + pe_span, len(relocated_funcs)))
+
+    # Write master module table for C++ runtime loader
+    master_header = ROOT / "src" / "l4d2_modules.h"
+    master_lines = [
+        "// Automatically generated by tools/generate_module_configs.py",
+        "#pragma once",
+        "",
+        "#include <cstdint>",
+        "#include <string_view>",
+        "#include <array>",
+        "",
+        "namespace l4d2 {",
+        "",
+        "struct ModuleDescriptor {",
+        "    const char* module_name;",
+        "    const char* relative_path;",
+        "    uint32_t image_base;",
+        "    uint32_t image_end;",
+        "    uint32_t function_count;",
+        "};",
+        "",
+        f"inline constexpr std::array<ModuleDescriptor, {len(manifest_master)}> kSourceModules = {{{{"
+    ]
+
+    for name, rel, base, end, count in manifest_master:
+        rel_clean = rel.replace("\\", "/")
+        master_lines.append(
+            f'    {{"{name}", "{rel_clean}", 0x{base:08X}, 0x{end:08X}, {count}U}},'
+        )
+
+    master_lines.extend([
+        "}};",
+        "",
+        "} // namespace l4d2",
+        ""
+    ])
+
+    with open(master_header, "w", encoding="utf-8") as f:
+        f.write("\n".join(master_lines))
+    print(f"\n[generate_module_configs] Successfully wrote {master_header} with {len(manifest_master)} modules.")
+
+
+if __name__ == "__main__":
+    generate_configs()

@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: inputsystem_360
+# Source binary: bin\inputsystem_360.dll
+# Target virtual address range: 0x83500000 - 0x83560030 (0.38 MB)
+
+[project]
+name = "inputsystem_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "inputsystem_360.dll"
+file_path = "bin/inputsystem_360.dll"
+image_base = "0x83500000"
+image_size = "0x00060030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x83500000"
+out_directory_path = "generated/inputsystem_360"
+
+# Total functions discovered via .pdata + relocations: 214
+[entrypoint.functions]
+"0x84A100A8" = { end = "0x84A10118" }
+"0x84A10198" = { end = "0x84A101E8" }
+"0x84A101F0" = { end = "0x84A10258" }
+"0x84A10258" = { end = "0x84A102B8" }
+"0x84A102C0" = { end = "0x84A10364" }
+"0x84A103C8" = { end = "0x84A1042C" }
+"0x84A10488" = { end = "0x84A10560" }
+"0x84A105D0" = { end = "0x84A10688" }
+"0x84A10688" = { end = "0x84A10720" }
+"0x84A10720" = { end = "0x84A1081C" }
+"0x84A10820" = { end = "0x84A108EC" }
+"0x84A108F0" = { end = "0x84A10950" }
+"0x84A10950" = { end = "0x84A10A2C" }
+"0x84A10A30" = { end = "0x84A10AFC" }
+"0x84A10B00" = { end = "0x84A10B64" }
+"0x84A10B68" = { end = "0x84A10BB0" }
+"0x84A10BB0" = { end = "0x84A10C24" }
+"0x84A10C28" = { end = "0x84A10D08" }
+"0x84A10D08" = { end = "0x84A10DE8" }
+"0x84A10DE8" = { end = "0x84A10E34" }
+"0x84A10E38" = { end = "0x84A10E84" }
+"0x84A10E88" = { end = "0x84A10F08" }
+"0x84A10F08" = { end = "0x84A10FEC" }
+"0x84A10FF0" = { end = "0x84A1150C" }
+"0x84A11510" = { end = "0x84A11560" }
+"0x84A11580" = { end = "0x84A11600" }
+"0x84A11600" = { end = "0x84A11698" }
+"0x84A11698" = { end = "0x84A11784" }
+"0x84A11788" = { end = "0x84A11804" }
+"0x84A11808" = { end = "0x84A118C4" }
+"0x84A118C8" = { end = "0x84A11B14" }
+"0x84A11B18" = { end = "0x84A11BA4" }
+"0x84A11BA8" = { end = "0x84A11D4C" }
+"0x84A11D50" = { end = "0x84A121A4" }
+"0x84A122E8" = { end = "0x84A123A4" }
+"0x84A123A8" = { end = "0x84A1241C" }
+"0x84A125D0" = { end = "0x84A12634" }
+"0x84A12678" = { end = "0x84A12774" }
+"0x84A12778" = { end = "0x84A129C8" }
+"0x84A129C8" = { end = "0x84A12A10" }
+"0x84A12A10" = { end = "0x84A12FAC" }
+"0x84A13068" = { end = "0x84A130AC" }
+"0x84A130B0" = { end = "0x84A131F4" }
+"0x84A13208" = { end = "0x84A133AC" }
+"0x84A133B0" = { end = "0x84A1344C" }
+"0x84A13450" = { end = "0x84A13498" }
+"0x84A13498" = { end = "0x84A1378C" }
+"0x84A137A8" = { end = "0x84A13870" }
+"0x84A13888" = { end = "0x84A138BC" }
+"0x84A138E0" = { end = "0x84A13938" }

@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: server_360
+# Source binary: left4dead2\bin\server_360.dll
+# Target virtual address range: 0x89780000 - 0x89FD0030 (8.31 MB)
+
+[project]
+name = "server_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "server_360.dll"
+file_path = "left4dead2/bin/server_360.dll"
+image_base = "0x89780000"
+image_size = "0x00850030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x89780000"
+out_directory_path = "generated/server_360"
+
+# Total functions discovered via .pdata + relocations: 18936
+[entrypoint.functions]
+"0x91070000" = { end = "0x910700A0" }
+"0x910700E8" = { end = "0x9107014C" }
+"0x91070150" = { end = "0x910701BC" }
+"0x91070220" = { end = "0x91070440" }
+"0x91070468" = { end = "0x910704FC" }
+"0x91070500" = { end = "0x910706A8" }
+"0x91070738" = { end = "0x91070778" }
+"0x91070790" = { end = "0x910707F4" }
+"0x910707F8" = { end = "0x910708C4" }
+"0x91070A60" = { end = "0x91070B40" }
+"0x91070B40" = { end = "0x91070D30" }
+"0x91070D30" = { end = "0x91070DE4" }
+"0x91070DE8" = { end = "0x91070E60" }
+"0x91070E60" = { end = "0x91070ED8" }
+"0x91070EF8" = { end = "0x91070FA4" }
+"0x91070FA8" = { end = "0x91070FD4" }
+"0x91070FD8" = { end = "0x91071038" }
+"0x910710C8" = { end = "0x91071178" }
+"0x91071178" = { end = "0x91071214" }
+"0x91071510" = { end = "0x9107170C" }
+"0x91071710" = { end = "0x91071790" }
+"0x91071790" = { end = "0x91071868" }
+"0x91071868" = { end = "0x91071924" }
+"0x91071928" = { end = "0x91078B74" }
+"0x91078B78" = { end = "0x91078D2C" }
+"0x91078D30" = { end = "0x91078DAC" }
+"0x91078DB0" = { end = "0x91078E08" }
+"0x91078E08" = { end = "0x91078F18" }
+"0x91078F18" = { end = "0x9107905C" }
+"0x910790A0" = { end = "0x9107916C" }
+"0x91079170" = { end = "0x9107927C" }
+"0x91079280" = { end = "0x91079348" }
+"0x91079348" = { end = "0x91079488" }
+"0x91079488" = { end = "0x91079550" }
+"0x91079550" = { end = "0x9107958C" }
+"0x910795A8" = { end = "0x910795F8" }
+"0x91079950" = { end = "0x910799C0" }
+"0x910799E8" = { end = "0x91079A64" }
+"0x91079A68" = { end = "0x91079C40" }
+"0x91079C40" = { end = "0x91079CD4" }
+"0x91079D58" = { end = "0x91079E4C" }
+"0x91079E50" = { end = "0x91079EE8" }
+"0x91079EE8" = { end = "0x91079F50" }
+"0x91079F50" = { end = "0x91079FE0" }
+"0x91079FE0" = { end = "0x9107A054" }
+"0x9107A058" = { end = "0x9107A0CC" }
+"0x9107A300" = { end = "0x9107A450" }
+"0x9107A658" = { end = "0x9107A7A4" }
+"0x9107A888" = { end = "0x9107A914" }
+"0x9107A918" = { end = "0x9107AB84" }

@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: shaderapidx9_360
+# Source binary: bin\shaderapidx9_360.dll
+# Target virtual address range: 0x85200000 - 0x854300B0 (2.19 MB)
+
+[project]
+name = "shaderapidx9_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "shaderapidx9_360.dll"
+file_path = "bin/shaderapidx9_360.dll"
+image_base = "0x85200000"
+image_size = "0x002300B0"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x85200000"
+out_directory_path = "generated/shaderapidx9_360"
+
+# Total functions discovered via .pdata + relocations: 4300
+[entrypoint.functions]
+"0x88450000" = { end = "0x884500B8" }
+"0x884500B8" = { end = "0x88450AD0" }
+"0x88450AD0" = { end = "0x88450C2C" }
+"0x88450CA8" = { end = "0x88450FB0" }
+"0x88450FB0" = { end = "0x884513B4" }
+"0x884516E8" = { end = "0x88451774" }
+"0x88451778" = { end = "0x8845180C" }
+"0x88451810" = { end = "0x8845187C" }
+"0x88451880" = { end = "0x884518D0" }
+"0x884518D0" = { end = "0x884519A8" }
+"0x884519A8" = { end = "0x88451ABC" }
+"0x88451AC0" = { end = "0x88451E70" }
+"0x88451E70" = { end = "0x88451FC0" }
+"0x88451FC0" = { end = "0x88452110" }
+"0x88452110" = { end = "0x88452198" }
+"0x88452198" = { end = "0x88452230" }
+"0x88452230" = { end = "0x8845238C" }
+"0x88452390" = { end = "0x884524C8" }
+"0x884524C8" = { end = "0x88452518" }
+"0x88452518" = { end = "0x884525B8" }
+"0x884525B8" = { end = "0x884526D4" }
+"0x884526D8" = { end = "0x88452804" }
+"0x88452808" = { end = "0x88452934" }
+"0x88452938" = { end = "0x88452D38" }
+"0x88452D48" = { end = "0x88452DBC" }
+"0x88452DC0" = { end = "0x88452E4C" }
+"0x88452EA0" = { end = "0x88452ED8" }
+"0x88452ED8" = { end = "0x88452F48" }
+"0x88453018" = { end = "0x884530FC" }
+"0x88453120" = { end = "0x884531E4" }
+"0x884531E8" = { end = "0x884532AC" }
+"0x884534A0" = { end = "0x88453518" }
+"0x884535B8" = { end = "0x88453658" }
+"0x88453658" = { end = "0x884536C0" }
+"0x884536E8" = { end = "0x8845374C" }
+"0x88453750" = { end = "0x884537BC" }
+"0x88453820" = { end = "0x88453898" }
+"0x88453898" = { end = "0x88453954" }
+"0x88453958" = { end = "0x884539F4" }
+"0x884539F8" = { end = "0x88453AD4" }
+"0x88453C58" = { end = "0x88453E10" }
+"0x88453E10" = { end = "0x884541F0" }
+"0x884541F0" = { end = "0x884542E0" }
+"0x88454308" = { end = "0x884546EC" }
+"0x884546F8" = { end = "0x88454728" }
+"0x88454728" = { end = "0x8845477C" }
+"0x88454780" = { end = "0x88454868" }
+"0x88454968" = { end = "0x88454A8C" }
+"0x88454A90" = { end = "0x88454B48" }
+"0x88454BC0" = { end = "0x88454CA0" }

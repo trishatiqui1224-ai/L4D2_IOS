@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: vstdlib_360
+# Source binary: bin\vstdlib_360.dll
+# Target virtual address range: 0x82E00000 - 0x82E80030 (0.50 MB)
+
+[project]
+name = "vstdlib_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "vstdlib_360.dll"
+file_path = "bin/vstdlib_360.dll"
+image_base = "0x82E00000"
+image_size = "0x00080030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x82E00000"
+out_directory_path = "generated/vstdlib_360"
+
+# Total functions discovered via .pdata + relocations: 385
+[entrypoint.functions]
+"0x83C10098" = { end = "0x83C10198" }
+"0x83C101D0" = { end = "0x83C10240" }
+"0x83C10240" = { end = "0x83C10270" }
+"0x83C102F0" = { end = "0x83C10368" }
+"0x83C10368" = { end = "0x83C103E0" }
+"0x83C103E0" = { end = "0x83C10444" }
+"0x83C10448" = { end = "0x83C104AC" }
+"0x83C104B0" = { end = "0x83C10550" }
+"0x83C10558" = { end = "0x83C105BC" }
+"0x83C105E0" = { end = "0x83C10648" }
+"0x83C10680" = { end = "0x83C106FC" }
+"0x83C10700" = { end = "0x83C1075C" }
+"0x83C10760" = { end = "0x83C10854" }
+"0x83C10868" = { end = "0x83C108B8" }
+"0x83C10900" = { end = "0x83C10974" }
+"0x83C10998" = { end = "0x83C10A08" }
+"0x83C10A60" = { end = "0x83C10B8C" }
+"0x83C10B90" = { end = "0x83C10C60" }
+"0x83C10CD8" = { end = "0x83C10DD0" }
+"0x83C10DD0" = { end = "0x83C10EA8" }
+"0x83C10EA8" = { end = "0x83C10F80" }
+"0x83C110B8" = { end = "0x83C11100" }
+"0x83C11158" = { end = "0x83C111C8" }
+"0x83C111F0" = { end = "0x83C11270" }
+"0x83C11270" = { end = "0x83C11300" }
+"0x83C11300" = { end = "0x83C11370" }
+"0x83C11418" = { end = "0x83C11490" }
+"0x83C11490" = { end = "0x83C11548" }
+"0x83C11548" = { end = "0x83C115F0" }
+"0x83C115F0" = { end = "0x83C11674" }
+"0x83C11678" = { end = "0x83C11934" }
+"0x83C11938" = { end = "0x83C11A8C" }
+"0x83C11CA0" = { end = "0x83C11DE8" }
+"0x83C11DE8" = { end = "0x83C11FE8" }
+"0x83C11FE8" = { end = "0x83C12040" }
+"0x83C12040" = { end = "0x83C121B4" }
+"0x83C121B8" = { end = "0x83C1232C" }
+"0x83C12400" = { end = "0x83C12640" }
+"0x83C12640" = { end = "0x83C12880" }
+"0x83C12880" = { end = "0x83C12904" }
+"0x83C12908" = { end = "0x83C129D4" }
+"0x83C129D8" = { end = "0x83C12A1C" }
+"0x83C12A38" = { end = "0x83C12A98" }
+"0x83C12A98" = { end = "0x83C12C98" }
+"0x83C12C98" = { end = "0x83C12D54" }
+"0x83C12D58" = { end = "0x83C12E14" }
+"0x83C12E18" = { end = "0x83C1300C" }
+"0x83C13010" = { end = "0x83C13178" }
+"0x83C13178" = { end = "0x83C13230" }
+"0x83C13230" = { end = "0x83C132E4" }

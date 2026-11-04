@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: matchmaking_360
+# Source binary: left4dead2\bin\matchmaking_360.dll
+# Target virtual address range: 0x8B080000 - 0x8B120030 (0.63 MB)
+
+[project]
+name = "matchmaking_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "matchmaking_360.dll"
+file_path = "left4dead2/bin/matchmaking_360.dll"
+image_base = "0x8B080000"
+image_size = "0x000A0030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x8B080000"
+out_directory_path = "generated/matchmaking_360"
+
+# Total functions discovered via .pdata + relocations: 1011
+[entrypoint.functions]
+"0x94110068" = { end = "0x941100CC" }
+"0x941100D0" = { end = "0x9411013C" }
+"0x94110220" = { end = "0x94110288" }
+"0x94110288" = { end = "0x941103A0" }
+"0x941103A0" = { end = "0x941104EC" }
+"0x941104F0" = { end = "0x941106A8" }
+"0x941106A8" = { end = "0x94110718" }
+"0x94110718" = { end = "0x94110778" }
+"0x94110778" = { end = "0x941107F4" }
+"0x941107F8" = { end = "0x94110890" }
+"0x94110890" = { end = "0x9411090C" }
+"0x94110910" = { end = "0x94110FB0" }
+"0x94110FB0" = { end = "0x941111A0" }
+"0x941111D0" = { end = "0x94111344" }
+"0x941113A8" = { end = "0x94111428" }
+"0x94111430" = { end = "0x941114CC" }
+"0x941114D0" = { end = "0x94111530" }
+"0x94111540" = { end = "0x9411168C" }
+"0x941116B8" = { end = "0x94111718" }
+"0x94111718" = { end = "0x94111870" }
+"0x94111870" = { end = "0x94111A6C" }
+"0x94111A70" = { end = "0x94111CBC" }
+"0x94111CC0" = { end = "0x94112084" }
+"0x94112088" = { end = "0x941125BC" }
+"0x941125C0" = { end = "0x9411260C" }
+"0x94112610" = { end = "0x94112674" }
+"0x94112680" = { end = "0x94112728" }
+"0x94112728" = { end = "0x941127A0" }
+"0x941127A0" = { end = "0x9411281C" }
+"0x94112820" = { end = "0x941128EC" }
+"0x941128F0" = { end = "0x941129A4" }
+"0x941129A8" = { end = "0x94112ADC" }
+"0x94112AE8" = { end = "0x94112C40" }
+"0x94112C40" = { end = "0x94112EDC" }
+"0x94112EE0" = { end = "0x94113378" }
+"0x94113378" = { end = "0x9411396C" }
+"0x94113970" = { end = "0x94113D7C" }
+"0x94113D80" = { end = "0x941145B0" }
+"0x941145B0" = { end = "0x941147DC" }
+"0x941147E0" = { end = "0x941149DC" }
+"0x941149E0" = { end = "0x94114AE4" }
+"0x94114B28" = { end = "0x94114BC4" }
+"0x94114BC8" = { end = "0x94114C48" }
+"0x94114C48" = { end = "0x94114CE8" }
+"0x94114CE8" = { end = "0x94115168" }
+"0x94115198" = { end = "0x94115304" }
+"0x94115308" = { end = "0x94115394" }
+"0x941153A0" = { end = "0x94115430" }
+"0x94115448" = { end = "0x941154D8" }
+"0x941154D8" = { end = "0x941155B0" }

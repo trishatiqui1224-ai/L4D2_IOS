@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: vguimatsurface_360
+# Source binary: bin\vguimatsurface_360.dll
+# Target virtual address range: 0x84E00000 - 0x84F20030 (1.13 MB)
+
+[project]
+name = "vguimatsurface_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "vguimatsurface_360.dll"
+file_path = "bin/vguimatsurface_360.dll"
+image_base = "0x84E00000"
+image_size = "0x00120030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x84E00000"
+out_directory_path = "generated/vguimatsurface_360"
+
+# Total functions discovered via .pdata + relocations: 2431
+[entrypoint.functions]
+"0x87C203A0" = { end = "0x87C20400" }
+"0x87C209E0" = { end = "0x87C20BE8" }
+"0x87C20BE8" = { end = "0x87C20DF0" }
+"0x87C20DF0" = { end = "0x87C20FE8" }
+"0x87C20FE8" = { end = "0x87C211E4" }
+"0x87C211E8" = { end = "0x87C21244" }
+"0x87C21248" = { end = "0x87C21370" }
+"0x87C21370" = { end = "0x87C214A4" }
+"0x87C214A8" = { end = "0x87C21568" }
+"0x87C21568" = { end = "0x87C21628" }
+"0x87C21628" = { end = "0x87C216B0" }
+"0x87C216B0" = { end = "0x87C21ADC" }
+"0x87C21AE0" = { end = "0x87C21B8C" }
+"0x87C21BC8" = { end = "0x87C21BF4" }
+"0x87C21EC8" = { end = "0x87C22010" }
+"0x87C220E0" = { end = "0x87C22320" }
+"0x87C22320" = { end = "0x87C22560" }
+"0x87C22560" = { end = "0x87C225E8" }
+"0x87C225E8" = { end = "0x87C22734" }
+"0x87C22738" = { end = "0x87C22878" }
+"0x87C22960" = { end = "0x87C22B5C" }
+"0x87C22B60" = { end = "0x87C231BC" }
+"0x87C231C0" = { end = "0x87C2323C" }
+"0x87C23240" = { end = "0x87C232F4" }
+"0x87C232F8" = { end = "0x87C23348" }
+"0x87C23348" = { end = "0x87C233C0" }
+"0x87C233D0" = { end = "0x87C234C8" }
+"0x87C234C8" = { end = "0x87C23544" }
+"0x87C23548" = { end = "0x87C2360C" }
+"0x87C23660" = { end = "0x87C238E8" }
+"0x87C238E8" = { end = "0x87C23950" }
+"0x87C239C8" = { end = "0x87C23AC0" }
+"0x87C23AC0" = { end = "0x87C23BB8" }
+"0x87C23C20" = { end = "0x87C23D74" }
+"0x87C23E50" = { end = "0x87C23F9C" }
+"0x87C23FA0" = { end = "0x87C241DC" }
+"0x87C241E0" = { end = "0x87C24414" }
+"0x87C24418" = { end = "0x87C2458C" }
+"0x87C24590" = { end = "0x87C24704" }
+"0x87C24898" = { end = "0x87C24AA0" }
+"0x87C24AA0" = { end = "0x87C24CA8" }
+"0x87C24CA8" = { end = "0x87C24D30" }
+"0x87C24D30" = { end = "0x87C24E8C" }
+"0x87C24E90" = { end = "0x87C24FD4" }
+"0x87C24FD8" = { end = "0x87C2512C" }
+"0x87C25130" = { end = "0x87C2526C" }
+"0x87C25270" = { end = "0x87C252F8" }
+"0x87C252F8" = { end = "0x87C25B84" }
+"0x87C25B88" = { end = "0x87C26164" }
+"0x87C261F0" = { end = "0x87C2627C" }

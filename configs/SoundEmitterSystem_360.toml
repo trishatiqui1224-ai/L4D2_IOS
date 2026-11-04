@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: SoundEmitterSystem_360
+# Source binary: bin\SoundEmitterSystem_360.dll
+# Target virtual address range: 0x83880000 - 0x838E0030 (0.38 MB)
+
+[project]
+name = "SoundEmitterSystem_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "SoundEmitterSystem_360.dll"
+file_path = "bin/SoundEmitterSystem_360.dll"
+image_base = "0x83880000"
+image_size = "0x00060030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x83880000"
+out_directory_path = "generated/SoundEmitterSystem_360"
+
+# Total functions discovered via .pdata + relocations: 371
+[entrypoint.functions]
+"0x85110000" = { end = "0x8511009C" }
+"0x851100C8" = { end = "0x8511012C" }
+"0x851101A8" = { end = "0x85110254" }
+"0x851102E8" = { end = "0x85110314" }
+"0x85110318" = { end = "0x85110364" }
+"0x85110578" = { end = "0x851105B8" }
+"0x851105B8" = { end = "0x85110644" }
+"0x85110648" = { end = "0x851109D8" }
+"0x851109D8" = { end = "0x85110B20" }
+"0x85110B20" = { end = "0x85110B78" }
+"0x85110B78" = { end = "0x85110BDC" }
+"0x85110BE0" = { end = "0x85110C98" }
+"0x85110C98" = { end = "0x85110D24" }
+"0x85110D28" = { end = "0x85110E9C" }
+"0x85110EA0" = { end = "0x85111020" }
+"0x85111020" = { end = "0x85111050" }
+"0x85111050" = { end = "0x85111084" }
+"0x85111088" = { end = "0x85111108" }
+"0x85111110" = { end = "0x85111184" }
+"0x85111188" = { end = "0x85111460" }
+"0x85111460" = { end = "0x851114C4" }
+"0x851114D8" = { end = "0x85111544" }
+"0x85111548" = { end = "0x8511159C" }
+"0x851115A0" = { end = "0x851115F4" }
+"0x851115F8" = { end = "0x8511173C" }
+"0x85111758" = { end = "0x85111830" }
+"0x85111830" = { end = "0x85111928" }
+"0x851119E0" = { end = "0x85111AF8" }
+"0x85111AF8" = { end = "0x85112118" }
+"0x85112120" = { end = "0x851121F0" }
+"0x851121F0" = { end = "0x85112260" }
+"0x85112260" = { end = "0x851122F8" }
+"0x851122F8" = { end = "0x851123E8" }
+"0x851123E8" = { end = "0x8511261C" }
+"0x85112620" = { end = "0x851126F8" }
+"0x851127C8" = { end = "0x851128A0" }
+"0x851128A0" = { end = "0x85112994" }
+"0x85112998" = { end = "0x85112A20" }
+"0x85112A68" = { end = "0x85112B24" }
+"0x85112B28" = { end = "0x85112BBC" }
+"0x85112BC0" = { end = "0x85112C78" }
+"0x85112C78" = { end = "0x85112D88" }
+"0x85112D88" = { end = "0x85112E38" }
+"0x85112E68" = { end = "0x85112F24" }
+"0x85112F28" = { end = "0x85112F8C" }
+"0x85112F90" = { end = "0x85113000" }
+"0x85113000" = { end = "0x851130E8" }
+"0x851130E8" = { end = "0x85113174" }
+"0x85113250" = { end = "0x8511339C" }
+"0x85113568" = { end = "0x851136B8" }

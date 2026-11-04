@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: StudioRender_360
+# Source binary: bin\StudioRender_360.dll
+# Target virtual address range: 0x86380000 - 0x86600030 (2.50 MB)
+
+[project]
+name = "StudioRender_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "StudioRender_360.dll"
+file_path = "bin/StudioRender_360.dll"
+image_base = "0x86380000"
+image_size = "0x00280030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x86380000"
+out_directory_path = "generated/StudioRender_360"
+
+# Total functions discovered via .pdata + relocations: 741
+[entrypoint.functions]
+"0x8A710128" = { end = "0x8A710198" }
+"0x8A710288" = { end = "0x8A710360" }
+"0x8A710360" = { end = "0x8A710438" }
+"0x8A7104A0" = { end = "0x8A7105B0" }
+"0x8A7105B0" = { end = "0x8A7106A0" }
+"0x8A7106A0" = { end = "0x8A71076C" }
+"0x8A710770" = { end = "0x8A7108B4" }
+"0x8A7108B8" = { end = "0x8A710940" }
+"0x8A710940" = { end = "0x8A710A3C" }
+"0x8A710A40" = { end = "0x8A710AEC" }
+"0x8A710AF0" = { end = "0x8A710BC0" }
+"0x8A710BC0" = { end = "0x8A710D04" }
+"0x8A710D08" = { end = "0x8A710D44" }
+"0x8A710D90" = { end = "0x8A710E30" }
+"0x8A710E30" = { end = "0x8A710ED0" }
+"0x8A710F18" = { end = "0x8A710F7C" }
+"0x8A710FC0" = { end = "0x8A711314" }
+"0x8A711318" = { end = "0x8A7113BC" }
+"0x8A7113C0" = { end = "0x8A71151C" }
+"0x8A711538" = { end = "0x8A711584" }
+"0x8A711588" = { end = "0x8A711640" }
+"0x8A711640" = { end = "0x8A711730" }
+"0x8A711730" = { end = "0x8A7118B0" }
+"0x8A7118B0" = { end = "0x8A7119D4" }
+"0x8A7119D8" = { end = "0x8A711A90" }
+"0x8A711B08" = { end = "0x8A711BE8" }
+"0x8A711BE8" = { end = "0x8A711C60" }
+"0x8A711C60" = { end = "0x8A711DF8" }
+"0x8A711DF8" = { end = "0x8A712138" }
+"0x8A7121A0" = { end = "0x8A712414" }
+"0x8A712418" = { end = "0x8A7125A4" }
+"0x8A712600" = { end = "0x8A7128D8" }
+"0x8A7128D8" = { end = "0x8A712950" }
+"0x8A712950" = { end = "0x8A712B60" }
+"0x8A712B60" = { end = "0x8A712CAC" }
+"0x8A712CB0" = { end = "0x8A712F78" }
+"0x8A7130C8" = { end = "0x8A7131A0" }
+"0x8A7131A0" = { end = "0x8A713298" }
+"0x8A713298" = { end = "0x8A713390" }
+"0x8A713390" = { end = "0x8A713484" }
+"0x8A713488" = { end = "0x8A713584" }
+"0x8A713588" = { end = "0x8A7135E8" }
+"0x8A7135E8" = { end = "0x8A713754" }
+"0x8A713758" = { end = "0x8A71386C" }
+"0x8A713870" = { end = "0x8A7138E0" }
+"0x8A7138E0" = { end = "0x8A7139D8" }
+"0x8A713A90" = { end = "0x8A713B88" }
+"0x8A713B88" = { end = "0x8A713CB4" }
+"0x8A713CB8" = { end = "0x8A713DF4" }
+"0x8A713DF8" = { end = "0x8A713E54" }

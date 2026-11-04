@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: client_360
+# Source binary: left4dead2\bin\client_360.dll
+# Target virtual address range: 0x88100000 - 0x888D0030 (7.81 MB)
+
+[project]
+name = "client_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "client_360.dll"
+file_path = "left4dead2/bin/client_360.dll"
+image_base = "0x88100000"
+image_size = "0x007D0030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x88100000"
+out_directory_path = "generated/client_360"
+
+# Total functions discovered via .pdata + relocations: 16742
+[entrypoint.functions]
+"0x8E340000" = { end = "0x8E3400A0" }
+"0x8E3400E8" = { end = "0x8E34014C" }
+"0x8E340150" = { end = "0x8E3401BC" }
+"0x8E340290" = { end = "0x8E340388" }
+"0x8E340388" = { end = "0x8E340680" }
+"0x8E340780" = { end = "0x8E34083C" }
+"0x8E340860" = { end = "0x8E340BB0" }
+"0x8E340BB0" = { end = "0x8E340C60" }
+"0x8E340C60" = { end = "0x8E340D14" }
+"0x8E340D18" = { end = "0x8E340D90" }
+"0x8E340D90" = { end = "0x8E340DF8" }
+"0x8E340DF8" = { end = "0x8E340E54" }
+"0x8E340E58" = { end = "0x8E340EB4" }
+"0x8E340EB8" = { end = "0x8E340F24" }
+"0x8E340F28" = { end = "0x8E34101C" }
+"0x8E341020" = { end = "0x8E341080" }
+"0x8E341090" = { end = "0x8E3410D0" }
+"0x8E341100" = { end = "0x8E341174" }
+"0x8E341178" = { end = "0x8E341208" }
+"0x8E341208" = { end = "0x8E341324" }
+"0x8E341328" = { end = "0x8E34143C" }
+"0x8E341440" = { end = "0x8E341510" }
+"0x8E341510" = { end = "0x8E3415C0" }
+"0x8E3415C0" = { end = "0x8E341690" }
+"0x8E341690" = { end = "0x8E341798" }
+"0x8E341798" = { end = "0x8E3418C4" }
+"0x8E3418E0" = { end = "0x8E3419F0" }
+"0x8E3419F0" = { end = "0x8E341BA4" }
+"0x8E341BA8" = { end = "0x8E341C7C" }
+"0x8E341CF8" = { end = "0x8E341EAC" }
+"0x8E3420B8" = { end = "0x8E342204" }
+"0x8E3422D0" = { end = "0x8E3424CC" }
+"0x8E3424D0" = { end = "0x8E3426CC" }
+"0x8E3426D0" = { end = "0x8E34281C" }
+"0x8E342820" = { end = "0x8E342CF8" }
+"0x8E342D70" = { end = "0x8E342DD4" }
+"0x8E342DD8" = { end = "0x8E342F2C" }
+"0x8E342F30" = { end = "0x8E34306C" }
+"0x8E343070" = { end = "0x8E343150" }
+"0x8E343150" = { end = "0x8E343340" }
+"0x8E343340" = { end = "0x8E3433F0" }
+"0x8E3433F0" = { end = "0x8E3439C4" }
+"0x8E3439C8" = { end = "0x8E343AC0" }
+"0x8E343AC0" = { end = "0x8E343DEC" }
+"0x8E343DF0" = { end = "0x8E343EA0" }
+"0x8E343EA0" = { end = "0x8E343F10" }
+"0x8E343F10" = { end = "0x8E344074" }
+"0x8E344078" = { end = "0x8E3440CC" }
+"0x8E3440D0" = { end = "0x8E344378" }
+"0x8E344378" = { end = "0x8E3445C4" }

@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: stdshader_dx9_360
+# Source binary: bin\stdshader_dx9_360.dll
+# Target virtual address range: 0x85F00000 - 0x85FD0030 (0.81 MB)
+
+[project]
+name = "stdshader_dx9_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "stdshader_dx9_360.dll"
+file_path = "bin/stdshader_dx9_360.dll"
+image_base = "0x85F00000"
+image_size = "0x000D0030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x85F00000"
+out_directory_path = "generated/stdshader_dx9_360"
+
+# Total functions discovered via .pdata + relocations: 1889
+[entrypoint.functions]
+"0x89E200B0" = { end = "0x89E20124" }
+"0x89E20128" = { end = "0x89E20368" }
+"0x89E20368" = { end = "0x89E203A0" }
+"0x89E203A0" = { end = "0x89E20404" }
+"0x89E20428" = { end = "0x89E204B0" }
+"0x89E204B0" = { end = "0x89E20728" }
+"0x89E20728" = { end = "0x89E20760" }
+"0x89E20760" = { end = "0x89E207C4" }
+"0x89E207F8" = { end = "0x89E20830" }
+"0x89E208E8" = { end = "0x89E20944" }
+"0x89E20968" = { end = "0x89E209D4" }
+"0x89E209D8" = { end = "0x89E20A44" }
+"0x89E20A48" = { end = "0x89E20A80" }
+"0x89E20A80" = { end = "0x89E20AE4" }
+"0x89E20AE8" = { end = "0x89E20B4C" }
+"0x89E20B50" = { end = "0x89E20EF0" }
+"0x89E20EF0" = { end = "0x89E20F64" }
+"0x89E20F68" = { end = "0x89E216F0" }
+"0x89E216F0" = { end = "0x89E2179C" }
+"0x89E217A0" = { end = "0x89E218BC" }
+"0x89E218C0" = { end = "0x89E21960" }
+"0x89E21960" = { end = "0x89E21A64" }
+"0x89E21A68" = { end = "0x89E21B20" }
+"0x89E21B20" = { end = "0x89E21BC0" }
+"0x89E21BC0" = { end = "0x89E21CB8" }
+"0x89E21CB8" = { end = "0x89E21DB4" }
+"0x89E21DB8" = { end = "0x89E21F58" }
+"0x89E21F58" = { end = "0x89E21FF4" }
+"0x89E21FF8" = { end = "0x89E22078" }
+"0x89E22078" = { end = "0x89E220F8" }
+"0x89E220F8" = { end = "0x89E221B0" }
+"0x89E221B0" = { end = "0x89E222D0" }
+"0x89E222D0" = { end = "0x89E223D8" }
+"0x89E223D8" = { end = "0x89E22550" }
+"0x89E22550" = { end = "0x89E2267C" }
+"0x89E226A0" = { end = "0x89E22770" }
+"0x89E22770" = { end = "0x89E229D4" }
+"0x89E229D8" = { end = "0x89E22A10" }
+"0x89E22A10" = { end = "0x89E22A74" }
+"0x89E22A78" = { end = "0x89E22AD8" }
+"0x89E22AF8" = { end = "0x89E22D38" }
+"0x89E22D38" = { end = "0x89E22D70" }
+"0x89E22D70" = { end = "0x89E22DD4" }
+"0x89E22DF8" = { end = "0x89E22E8C" }
+"0x89E22E90" = { end = "0x89E22FE8" }
+"0x89E22FE8" = { end = "0x89E23020" }
+"0x89E23020" = { end = "0x89E23084" }
+"0x89E230A8" = { end = "0x89E23158" }
+"0x89E23158" = { end = "0x89E23530" }
+"0x89E23530" = { end = "0x89E23568" }

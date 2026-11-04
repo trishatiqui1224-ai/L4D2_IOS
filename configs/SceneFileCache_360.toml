@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: SceneFileCache_360
+# Source binary: bin\SceneFileCache_360.dll
+# Target virtual address range: 0x83A80000 - 0x83AD0030 (0.31 MB)
+
+[project]
+name = "SceneFileCache_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "SceneFileCache_360.dll"
+file_path = "bin/SceneFileCache_360.dll"
+image_base = "0x83A80000"
+image_size = "0x00050030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x83A80000"
+out_directory_path = "generated/SceneFileCache_360"
+
+# Total functions discovered via .pdata + relocations: 139
+[entrypoint.functions]
+"0x85510068" = { end = "0x855100CC" }
+"0x855100F0" = { end = "0x85510134" }
+"0x85510138" = { end = "0x85510184" }
+"0x85510240" = { end = "0x85510328" }
+"0x85510328" = { end = "0x855104B4" }
+"0x855104B8" = { end = "0x85510528" }
+"0x85510528" = { end = "0x85510640" }
+"0x85510668" = { end = "0x85510730" }
+"0x85510730" = { end = "0x8551079C" }
+"0x855107A0" = { end = "0x85510870" }
+"0x85510878" = { end = "0x85510A50" }
+"0x85510A50" = { end = "0x85510B6C" }
+"0x85510B70" = { end = "0x85510BC8" }
+"0x85510BC8" = { end = "0x85510CFC" }
+"0x85510D00" = { end = "0x85510E14" }
+"0x85510E18" = { end = "0x85510F80" }
+"0x85510F88" = { end = "0x85511544" }
+"0x85511544" = { end = "0x85511550" }
+"0x85511580" = { end = "0x855115B4" }
+"0x85511968" = { end = "0x855119C4" }
+"0x85511A40" = { end = "0x85512418" }
+"0x85512418" = { end = "0x85512D9C" }
+"0x85512E00" = { end = "0x85512F0C" }
+"0x85512F38" = { end = "0x85513020" }
+"0x85513020" = { end = "0x855130C8" }
+"0x855130D8" = { end = "0x85513188" }
+"0x85513188" = { end = "0x85513224" }
+"0x85513228" = { end = "0x855132B4" }
+"0x855132B8" = { end = "0x85513330" }
+"0x85513330" = { end = "0x85513400" }
+"0x85513400" = { end = "0x855134AC" }
+"0x855134B0" = { end = "0x8551354C" }
+"0x85513600" = { end = "0x8551370C" }
+"0x85513718" = { end = "0x85513840" }
+"0x85513840" = { end = "0x85513870" }
+"0x85513920" = { end = "0x85513970" }
+"0x85513970" = { end = "0x855139C4" }
+"0x85513F00" = { end = "0x85513F94" }
+"0x85513FA0" = { end = "0x85513FF8" }
+"0x85513FF8" = { end = "0x8551404C" }
+"0x85514058" = { end = "0x8551413C" }
+"0x8551413C" = { end = "0x8551415C" }
+"0x85514160" = { end = "0x85514188" }
+"0x85514328" = { end = "0x855143B0" }
+"0x85514408" = { end = "0x85514450" }
+"0x85514468" = { end = "0x855144C0" }
+"0x855144C8" = { end = "0x8551462C" }
+"0x8551462C" = { end = "0x8551468C" }
+"0x855146B0" = { end = "0x8551470C" }
+"0x85514710" = { end = "0x85514754" }

@@ -1,0 +1,82 @@
+# ReXGlue Ahead-Of-Time Codegen Manifest: vscript_360
+# Source binary: bin\vscript_360.dll
+# Target virtual address range: 0x84800000 - 0x84890030 (0.56 MB)
+
+[project]
+name = "vscript_360"
+sdk_version = "0.10.0"
+target_arch = "arm64"
+
+[module]
+module_name = "vscript_360.dll"
+file_path = "bin/vscript_360.dll"
+image_base = "0x84800000"
+image_size = "0x00090030"
+writable_code_segments = true
+
+[compiler]
+cr_as_local = false
+xer_as_local = false
+ctr_as_local = false
+non_volatile_as_local = false
+enable_sync_fences = true
+enable_lwsync_fences = true
+enable_eieio_fences = true
+stwcx_atomic_cas = true
+
+[entrypoint]
+entry_address = "0x84800000"
+out_directory_path = "generated/vscript_360"
+
+# Total functions discovered via .pdata + relocations: 824
+[entrypoint.functions]
+"0x87010048" = { end = "0x870100AC" }
+"0x87010180" = { end = "0x870105F0" }
+"0x870105F0" = { end = "0x870106D8" }
+"0x870106E8" = { end = "0x87010724" }
+"0x87010740" = { end = "0x87010788" }
+"0x870107B0" = { end = "0x87010844" }
+"0x87010848" = { end = "0x870108C0" }
+"0x870108C0" = { end = "0x87010938" }
+"0x87010938" = { end = "0x87010A10" }
+"0x87010A28" = { end = "0x87010A88" }
+"0x87010A90" = { end = "0x87010AF4" }
+"0x87010AF8" = { end = "0x87010B50" }
+"0x87010B50" = { end = "0x87010BA4" }
+"0x87010C40" = { end = "0x87010CCC" }
+"0x87010CD0" = { end = "0x87010D88" }
+"0x87010D88" = { end = "0x87010DC8" }
+"0x87010DC8" = { end = "0x87010E34" }
+"0x87010E38" = { end = "0x87010EC4" }
+"0x87010EC8" = { end = "0x87010F24" }
+"0x87010F28" = { end = "0x87011008" }
+"0x87011008" = { end = "0x870110C0" }
+"0x870110C0" = { end = "0x87011150" }
+"0x87011150" = { end = "0x87011230" }
+"0x87011230" = { end = "0x8701138C" }
+"0x87011390" = { end = "0x870113D0" }
+"0x870113D0" = { end = "0x87011438" }
+"0x87011438" = { end = "0x87011538" }
+"0x87011538" = { end = "0x870116C0" }
+"0x870116C0" = { end = "0x8701171C" }
+"0x87011720" = { end = "0x87011788" }
+"0x87011788" = { end = "0x8701185C" }
+"0x87011860" = { end = "0x870118C8" }
+"0x87011B70" = { end = "0x87011BB0" }
+"0x87011BB0" = { end = "0x87011DEC" }
+"0x87011DF0" = { end = "0x87011EE8" }
+"0x87011EE8" = { end = "0x87012044" }
+"0x87012048" = { end = "0x87012180" }
+"0x87012180" = { end = "0x87012268" }
+"0x87012268" = { end = "0x87012298" }
+"0x87012298" = { end = "0x87012380" }
+"0x87012380" = { end = "0x870125A4" }
+"0x870125A8" = { end = "0x870127CC" }
+"0x870127D0" = { end = "0x870129EC" }
+"0x870129F0" = { end = "0x87012AE0" }
+"0x87012AE0" = { end = "0x87012BCC" }
+"0x87012BD0" = { end = "0x87012CB8" }
+"0x87012CB8" = { end = "0x87012D9C" }
+"0x87012DA0" = { end = "0x87012FD0" }
+"0x87012FD0" = { end = "0x87013104" }
+"0x87013108" = { end = "0x8701326C" }

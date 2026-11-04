@@ -1,0 +1,56 @@
+# Left 4 Dead 2 Recomp .gitignore
+# Zero Bundled Game Files Policy: Never commit copyrighted Valve assets!
+
+# Logs and temporary extractions
+*.log
+*_extracted.png
+boot.txt
+
+# Xbox 360 Disc Images and Extracted Assets
+*.iso
+*.xex
+*.xtx
+*.vtf
+*.vmt
+*.bsp
+*.bik
+*.mdl
+*.vvd
+*.vtx
+*.phy
+*.wav
+*.mp3
+*.pcf
+Left 4 Dead 2 (World)*
+game/
+disc/
+cache/
+save/
+SAVE/
+Documents/rex_data/
+Caches/
+
+# Build artifacts
+build/
+build-*/
+DerivedData/
+*.ipa
+*.app
+*.dSYM
+*.o
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
