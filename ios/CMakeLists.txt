@@ -17,7 +17,7 @@ if(NOT CMAKE_OSX_SYSROOT)
     set(CMAKE_OSX_SYSROOT "iphoneos")
 endif()
 if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "16.0")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "16.4")
 endif()
 
 project(l4d2recomp_ios LANGUAGES C CXX OBJC OBJCXX)
@@ -52,6 +52,7 @@ target_include_directories(L4D2Recomp PRIVATE
 target_compile_definitions(L4D2Recomp PRIVATE
     REX_PLATFORM_IOS=1
     __APPLE__=1
+    _LIBCPP_DISABLE_AVAILABILITY=1
 )
 
 # Apple Frameworks
