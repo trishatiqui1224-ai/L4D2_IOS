@@ -91,7 +91,7 @@ def verify_bundle(app_dir: pathlib.Path) -> bool:
     binaries = [main_bin]
     if fw_dir.is_dir():
         for p in fw_dir.glob("**/*"):
-            if p.is_file() and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store', '.txt')):
+            if p.is_file() and "_CodeSignature" not in p.parts and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store', '.txt', 'CodeResources')):
                 binaries.append(p)
 
     # 2. Check otool -L for leaked build machine paths and enforce Pure Launcher
@@ -231,8 +231,34 @@ def main():
         temp_dir = tempfile.mkdtemp(prefix="ipa_verify_")
         try:
             print(f"[CI Gate] Unpacking {args.ipa} to {temp_dir}...")
+            unzip_bin = shutil.which("unzip") or "/usr/bin/unzip"
+            if os.path.exists(unzip_bin):
+                subprocess.run([unzip_bin, "-q", str(args.ipa.resolve()), "-d", temp_dir], check=True)
+            else:
+                with zipfile.ZipFile(args.ipa, "r") as zf:
+                    for member in zf.infolist():
+                        zf.extract(member, temp_dir)
+                        attr = (member.external_attr >> 16) & 0o777
+                        if attr:
+                            dest_path = pathlib.Path(temp_dir) / member.filename
+                            if dest_path.is_file():
+                                try:
+                                    os.chmod(dest_path, attr)
+                                except Exception:
+                                    pass
+
+            # Ensure all binaries under Payload have executable bits set if they had it in ZIP
             with zipfile.ZipFile(args.ipa, "r") as zf:
-                zf.extractall(temp_dir)
+                for zinfo in zf.infolist():
+                    mode = (zinfo.external_attr >> 16) & 0o777
+                    if mode & 0o111:
+                        target_file = pathlib.Path(temp_dir) / zinfo.filename
+                        if target_file.is_file():
+                            try:
+                                os.chmod(target_file, mode)
+                            except Exception:
+                                pass
+
             payload = pathlib.Path(temp_dir) / "Payload"
             apps = list(payload.glob("*.app"))
             if not apps:
