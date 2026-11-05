@@ -17,6 +17,9 @@
 #include <rex/ui/windowed_app.h>
 #include <rex/ui/windowed_app_context_sdl.h>
 
+#ifndef SDL_MAIN_HANDLED
+#define SDL_MAIN_HANDLED 1
+#endif
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
