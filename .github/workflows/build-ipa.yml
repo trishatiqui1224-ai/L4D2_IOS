@@ -24,7 +24,7 @@ permissions:
 jobs:
   build-ios:
     name: Build L4D2 Recomp iOS (ARM64)
-    runs-on: macos-15
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Repository
@@ -35,12 +35,12 @@ jobs:
 
       - name: Select Xcode 16 for C++20/C++23 Toolchain
         run: |
-          XCODE_16=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          XCODE_16=$(ls -d /Applications/Xcode_16*.app /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
           if [ -n "${XCODE_16}" ]; then
-            echo "[CI] Selecting Xcode 16 at ${XCODE_16}..."
+            echo "[CI] Selecting Xcode at ${XCODE_16}..."
             sudo xcode-select -s "${XCODE_16}"
           else
-            echo "[CI] Xcode 16 not found by glob, checking active Xcode:"
+            echo "[CI] Xcode not found by glob, checking active Xcode:"
           fi
           xcodebuild -version
           xcrun --sdk iphoneos --find clang
