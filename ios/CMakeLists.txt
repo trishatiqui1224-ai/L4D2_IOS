@@ -217,23 +217,20 @@ foreach(spec ${L4D2_MODULE_SPECS})
 endforeach()
 
 # =============================================================================
-# 3. Main Executable Bundle Target
 # =============================================================================
-set(L4D2_IOS_SOURCES
+# 3. Target 1: Pure Minimal UIKit Launcher (Zero Custom LC_LOAD_DYLIBs)
+# =============================================================================
+set(L4D2_LAUNCHER_SOURCES
     src/ios_main.mm
     src/boot_trace.mm
     src/launcher.mm
     src/touch_controls.mm
     src/ingame_options.mm
-    src/audio/coreaudio_driver.mm
     ${L4D2_SRC}/logging/logger.cpp
-    ${L4D2_SRC}/module_loader.cpp
-    ${L4D2_SRC}/resolution_hooks.cpp
     ${L4D2_SRC}/crash_handler.cpp
-    ${L4D2_SRC}/guest_stubs.cpp
 )
 
-add_executable(L4D2Recomp MACOSX_BUNDLE ${L4D2_IOS_SOURCES})
+add_executable(L4D2Recomp MACOSX_BUNDLE ${L4D2_LAUNCHER_SOURCES})
 
 set_target_properties(L4D2Recomp PROPERTIES
     OUTPUT_NAME "L4D2Recomp"
@@ -254,6 +251,63 @@ target_include_directories(L4D2Recomp PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${L4D2_SRC}"
     "${L4D2_ROOT}"
+)
+
+target_compile_definitions(L4D2Recomp PRIVATE
+    REX_PLATFORM_IOS=1
+    __APPLE__=1
+    _LIBCPP_DISABLE_AVAILABILITY=1
+    TITLE_ID="454108D4"
+)
+
+# Pure UIKit Launcher links ONLY Apple system frameworks! ZERO custom @rpath load-time dependencies!
+target_link_libraries(L4D2Recomp PRIVATE
+    "-framework UIKit"
+    "-framework Foundation"
+    "-framework QuartzCore"
+    "-framework Metal"
+    "-framework AVFAudio"
+    "-framework AudioToolbox"
+    "-framework GameController"
+    "-framework CoreHaptics"
+    "-framework UniformTypeIdentifiers"
+    z
+)
+
+# =============================================================================
+# 4. Target 2: L4D2Game Dynamic Framework (Stage-2 Recomp Runtime)
+# =============================================================================
+set(L4D2_GAME_SOURCES
+    src/game_entry.mm
+    src/boot_trace.mm
+    src/touch_controls.mm
+    src/ingame_options.mm
+    src/audio/coreaudio_driver.mm
+    ${L4D2_SRC}/logging/logger.cpp
+    ${L4D2_SRC}/crash_handler.cpp
+    ${L4D2_SRC}/module_loader.cpp
+    ${L4D2_SRC}/resolution_hooks.cpp
+    ${L4D2_SRC}/guest_stubs.cpp
+)
+
+add_library(L4D2Game SHARED ${L4D2_GAME_SOURCES})
+
+set_target_properties(L4D2Game PROPERTIES
+    OUTPUT_NAME "L4D2Game"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH "@executable_path/Frameworks;@loader_path;@loader_path/.."
+    INSTALL_NAME_DIR "@rpath/L4D2Game.framework"
+)
+
+target_compile_options(L4D2Game PRIVATE
+    $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>
+    $<$<CXX_COMPILER_ID:Clang,AppleClang>:-gline-tables-only>
+)
+
+target_include_directories(L4D2Game PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+    "${L4D2_SRC}"
+    "${L4D2_ROOT}"
     "${L4D2_GEN_DIR}"
     "${L4D2_SDK}/include"
     "${L4D2_SDK}/src"
@@ -267,37 +321,37 @@ target_include_directories(L4D2Recomp PRIVATE
     "${L4D2_SDK}/thirdparty/utfcpp/source"
 )
 
-target_compile_definitions(L4D2Recomp PRIVATE
+target_compile_definitions(L4D2Game PRIVATE
     REX_PLATFORM_IOS=1
     __APPLE__=1
     _LIBCPP_DISABLE_AVAILABILITY=1
     TITLE_ID="454108D4"
 )
 
-# Apple ld64 force-loads every static recompilation library to prevent dead-stripping
-target_link_libraries(L4D2Recomp PRIVATE
+target_link_libraries(L4D2Game PRIVATE
     l4d2_headers
     ${FORCE_LOAD_FLAGS}
     ${RECOMP_LIBS}
     "-framework UIKit"
     "-framework Foundation"
+    "-framework Metal"
     "-framework AudioToolbox"
     "-framework AVFoundation"
     "-framework GameController"
-    "-framework Metal"
+    "-framework CoreHaptics"
     "-framework QuartzCore"
     "-framework UniformTypeIdentifiers"
     z
 )
 
 if(TARGET rex::runtime)
-    target_link_libraries(L4D2Recomp PRIVATE rex::runtime)
+    target_link_libraries(L4D2Game PRIVATE rex::runtime)
 elseif(TARGET rexruntime)
-    target_link_libraries(L4D2Recomp PRIVATE rexruntime)
+    target_link_libraries(L4D2Game PRIVATE rexruntime)
 endif()
 
 if(TARGET rexgpu-xenos)
-    add_dependencies(L4D2Recomp rexgpu-xenos)
+    add_dependencies(L4D2Game rexgpu-xenos)
 endif()
 
 # App Bundle Properties
@@ -308,10 +362,11 @@ configure_file(
 )
 
 # =============================================================================
-# 4. Stage Dereferenced Frameworks & Ad-Hoc Sign
+# 5. Stage Dereferenced Frameworks & Ad-Hoc Sign
 # =============================================================================
 set(_app "$<TARGET_BUNDLE_DIR:L4D2Recomp>")
 set(_fw "${_app}/Frameworks")
+set(_game_fw "${_fw}/L4D2Game.framework")
 
 if(TARGET rexruntime)
     set(_copy_rexruntime COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:rexruntime>" "${_fw}/")
@@ -335,21 +390,25 @@ endif()
 
 add_custom_target(l4d2_stage_frameworks ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_fw}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_game_fw}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:L4D2Game>" "${_game_fw}/L4D2Game"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/framework_Info.plist" "${_game_fw}/Info.plist"
     ${_copy_rexruntime}
     ${_copy_rexgpu}
     COMMAND cp -RL "${L4D2_MOLTENVK_FW}" "${_fw}/MoltenVK.framework"
+    COMMAND codesign --force --sign - --timestamp=none "${_game_fw}" || true
     ${_sign_rexruntime}
     ${_sign_rexgpu}
     COMMAND codesign --force --sign - --timestamp=none "${_fw}/MoltenVK.framework" || true
     COMMAND codesign --force --sign - --timestamp=none "${_app}" || true
-    DEPENDS L4D2Recomp ${_dep_rexruntime} ${_dep_rexgpu}
-    COMMENT "Staging real dereferenced MoltenVK, rexruntime, and rexgpu-xenos into Frameworks..."
+    DEPENDS L4D2Recomp L4D2Game ${_dep_rexruntime} ${_dep_rexgpu}
+    COMMENT "Staging real dereferenced MoltenVK, rexruntime, rexgpu-xenos, and L4D2Game.framework..."
     VERBATIM
 )
 
 # Custom target for .ipa packaging
 add_custom_target(l4d2recomp_package
     COMMAND python3 "${L4D2_ROOT}/tools/package_ipa.py" --app "$<TARGET_BUNDLE_DIR:L4D2Recomp>" --out "${CMAKE_BINARY_DIR}/L4D2Recomp.ipa"
-    DEPENDS L4D2Recomp l4d2_stage_frameworks
+    DEPENDS L4D2Recomp L4D2Game l4d2_stage_frameworks
     COMMENT "Packaging L4D2 Recomp .ipa..."
 )

@@ -156,17 +156,33 @@ jobs:
           fi
 
           echo "[CI] Inspecting IPA Frameworks:"
-          unzip -l L4D2-Recomp-iOS.ipa | grep -E "Frameworks/MoltenVK\.framework/MoltenVK|librexruntime\.dylib|librexgpu-xenos\.dylib"
+          unzip -l L4D2-Recomp-iOS.ipa | grep -E "Frameworks/MoltenVK\.framework/MoltenVK|librexruntime\.dylib|librexgpu-xenos\.dylib|L4D2Game\.framework/L4D2Game"
 
-          echo "[CI] Inspecting compiled guest functions in L4D2Recomp binary:"
+          echo "[CI] Inspecting compiled guest functions & pure launcher linkage:"
           rm -rf /tmp/ipa_inspect
           unzip -q L4D2-Recomp-iOS.ipa -d /tmp/ipa_inspect
-          otool -L /tmp/ipa_inspect/Payload/L4D2Recomp.app/L4D2Recomp
 
-          FUNC_COUNT=$(nm -gU /tmp/ipa_inspect/Payload/L4D2Recomp.app/L4D2Recomp | grep -c "sub_8" || true)
-          echo "Compiled guest function symbols in binary: $FUNC_COUNT"
+          # 1. Verify UNIX -rwxr-xr-x (755) permissions inside the ZIP!
+          echo "[CI] Verifying UNIX permissions inside ZIP..."
+          zipinfo -l L4D2-Recomp-iOS.ipa | grep "Payload/L4D2Recomp.app/L4D2Recomp$" | grep "^-rwxr-xr-x"
+
+          # 2. Verify main launcher binary has ZERO @rpath / custom dylib load-time dependencies!
+          echo "[CI] Verifying pure minimal UIKit launcher (ZERO custom @rpath load-time dependencies)..."
+          otool -L /tmp/ipa_inspect/Payload/L4D2Recomp.app/L4D2Recomp
+          if otool -L /tmp/ipa_inspect/Payload/L4D2Recomp.app/L4D2Recomp | grep -E "@rpath|@loader_path|/Users/|/opt/|AppKit|IOKit|libvulkan"; then
+            echo "FATAL: Main launcher executable must not link custom/@rpath/macOS libraries at load time!"
+            exit 1
+          fi
+
+          # 3. Verify compiled guest functions in L4D2Game framework
+          GAME_BIN="/tmp/ipa_inspect/Payload/L4D2Recomp.app/Frameworks/L4D2Game.framework/L4D2Game"
+          if [ ! -f "$GAME_BIN" ]; then
+            GAME_BIN="/tmp/ipa_inspect/Payload/L4D2Recomp.app/Frameworks/libL4D2Game.dylib"
+          fi
+          FUNC_COUNT=$(nm -gU "$GAME_BIN" | grep -c "sub_8" || true)
+          echo "Compiled guest function symbols in L4D2Game: $FUNC_COUNT"
           if [ "$FUNC_COUNT" -lt 10000 ]; then
-            echo "ERROR: Expected 10,000+ compiled PPC functions in binary, found $FUNC_COUNT!"
+            echo "ERROR: Expected 10,000+ compiled PPC functions in L4D2Game, found $FUNC_COUNT!"
             exit 1
           fi
           echo "[CI] Verification PASSED: Real static-recompiled IPA verified ($IPA_BYTES bytes, $FUNC_COUNT PPC functions)."

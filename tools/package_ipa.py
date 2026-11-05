@@ -3,7 +3,8 @@
 tools/package_ipa.py
 Packages L4D2 Recomp iOS build into a clean, codesigned .ipa archive for sideloading
 (AltStore, TrollStore, SideStore, Sideloadly, Xcode).
-Enforces correct dyld @rpath IDs, dependency paths, and ad-hoc code signing.
+Enforces correct dyld @rpath IDs, dependency paths, flat framework structures,
+UNIX 0755 execute permissions, and ad-hoc code signing.
 """
 
 import argparse
@@ -11,6 +12,7 @@ import os
 import pathlib
 import plistlib
 import shutil
+import stat
 import subprocess
 import sys
 import zipfile
@@ -23,8 +25,8 @@ def fix_rpaths_and_install_names(dest_app: pathlib.Path):
     Ensures:
     1. Main executable has LC_RPATH = @executable_path/Frameworks
     2. Embedded dylibs/frameworks have LC_ID_DYLIB = @rpath/<filename>
-    3. Cross-library and executable links use @rpath instead of build machine paths.
-    4. MoltenVK.framework is verified to be a shallow ios-arm64 framework.
+    3. Cross-library links use @rpath instead of build machine paths.
+    4. MoltenVK.framework and L4D2Game.framework are verified shallow ios-arm64 frameworks.
     """
     main_bin = dest_app / "L4D2Recomp"
     fw_dir = dest_app / "Frameworks"
@@ -33,13 +35,51 @@ def fix_rpaths_and_install_names(dest_app: pathlib.Path):
     if main_bin.exists():
         subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/Frameworks", str(main_bin)], check=False)
 
-    # 2. Set LC_ID_DYLIB on all frameworks/dylibs in Frameworks/
     if fw_dir.is_dir():
+        # 2. Stage & configure L4D2Game.framework
+        game_bin = fw_dir / "L4D2Game.framework" / "L4D2Game"
+        if not game_bin.exists():
+            for cand in [
+                fw_dir / "libL4D2Game.dylib",
+                fw_dir / "L4D2Game",
+                ROOT / "build" / "L4D2Game",
+                ROOT / "build" / "libL4D2Game.dylib",
+                ROOT / "build" / "Release-iphoneos" / "L4D2Game",
+                ROOT / "build" / "Release-iphoneos" / "libL4D2Game.dylib",
+            ]:
+                if cand.exists():
+                    print(f"[package_ipa] Staging L4D2Game from {cand}...")
+                    game_fw = fw_dir / "L4D2Game.framework"
+                    game_fw.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(cand, game_bin)
+                    break
+
+        if game_bin.exists():
+            subprocess.run(["install_name_tool", "-id", "@rpath/L4D2Game.framework/L4D2Game", str(game_bin)], check=False)
+            subprocess.run(["install_name_tool", "-add_rpath", "@loader_path/..", str(game_bin)], check=False)
+            subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/Frameworks", str(game_bin)], check=False)
+            game_plist = fw_dir / "L4D2Game.framework" / "Info.plist"
+            if not game_plist.exists():
+                pl = {
+                    "CFBundleDevelopmentRegion": "en",
+                    "CFBundleExecutable": "L4D2Game",
+                    "CFBundleIdentifier": "com.valve.l4d2recomp.game",
+                    "CFBundleInfoDictionaryVersion": "6.0",
+                    "CFBundleName": "L4D2Game",
+                    "CFBundlePackageType": "FMWK",
+                    "CFBundleShortVersionString": "1.0",
+                    "CFBundleVersion": "1",
+                    "MinimumOSVersion": "16.0",
+                    "CFBundleSupportedPlatforms": ["iPhoneOS"],
+                }
+                with open(game_plist, "wb") as fp:
+                    plistlib.dump(pl, fp)
+            print("[package_ipa] Verified L4D2Game.framework structure and Info.plist")
+
+        # 3. Stage & configure MoltenVK.framework
         mvk_bin = fw_dir / "MoltenVK.framework" / "MoltenVK"
         if mvk_bin.exists():
             subprocess.run(["install_name_tool", "-id", "@rpath/MoltenVK.framework/MoltenVK", str(mvk_bin)], check=False)
-
-            # Ensure MoltenVK Info.plist has iPhoneOS
             mvk_plist = fw_dir / "MoltenVK.framework" / "Info.plist"
             if mvk_plist.exists():
                 try:
@@ -52,6 +92,7 @@ def fix_rpaths_and_install_names(dest_app: pathlib.Path):
                 except Exception as e:
                     print(f"[package_ipa] Warning updating MoltenVK Info.plist: {e}")
 
+        # 4. Stage & configure rexruntime and rexgpu
         rexruntime_bin = fw_dir / "librexruntime.dylib"
         if rexruntime_bin.exists():
             subprocess.run(["install_name_tool", "-id", "@rpath/librexruntime.dylib", str(rexruntime_bin)], check=False)
@@ -62,18 +103,19 @@ def fix_rpaths_and_install_names(dest_app: pathlib.Path):
             subprocess.run(["install_name_tool", "-add_rpath", "@loader_path", str(rexgpu_bin)], check=False)
             subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/Frameworks", str(rexgpu_bin)], check=False)
 
-        # 3. Collect all binaries to fix -change references
+        # 5. Fix cross-library dependencies using install_name_tool -change
         all_binaries = []
         if main_bin.exists():
             all_binaries.append(main_bin)
         for p in fw_dir.glob("**/*"):
-            if p.is_file() and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store')):
+            if p.is_file() and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store', '.txt')):
                 all_binaries.append(p)
 
         target_map = {
             "librexruntime": "@rpath/librexruntime.dylib",
             "librexgpu-xenos": "@rpath/librexgpu-xenos.dylib",
             "MoltenVK": "@rpath/MoltenVK.framework/MoltenVK",
+            "L4D2Game": "@rpath/L4D2Game.framework/L4D2Game",
         }
 
         for b in all_binaries:
@@ -99,7 +141,7 @@ def fix_rpaths_and_install_names(dest_app: pathlib.Path):
 
 
 def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
-    """Packs app_dir into Payload/L4D2Recomp.app inside an IPA zip."""
+    """Packs app_dir into Payload/L4D2Recomp.app inside an IPA zip with UNIX 0755 execute bits."""
     if not app_dir.is_dir():
         print(f"[ERROR] App bundle directory not found: {app_dir}")
         return False
@@ -197,11 +239,25 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
     # 5. Clear quarantine / extended attributes
     subprocess.run(["xattr", "-cr", str(dest_app)], check=False)
 
-    # 6. Ad-hoc codesign every framework and the app bundle
+    # 6. ENFORCE UNIX 0755 EXECUTE PERMISSIONS on all binaries inside the app bundle!
+    print("[package_ipa] Enforcing UNIX 0755 execute permissions on all binaries...")
+    main_exec = dest_app / "L4D2Recomp"
+    if main_exec.exists():
+        os.chmod(main_exec, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH) # 0755
+        subprocess.run(["chmod", "755", str(main_exec)], check=False)
+
+    for p in fw_dir.glob("**/*"):
+        if p.is_file() and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store', '.txt')):
+            os.chmod(p, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH) # 0755
+            subprocess.run(["chmod", "755", str(p)], check=False)
+
+    # 7. Ad-hoc codesign every framework and the app bundle
     if shutil.which("codesign"):
         print("[package_ipa] Ad-hoc signing embedded frameworks...")
         for fw_item in fw_dir.iterdir():
             subprocess.run(["codesign", "--force", "--sign", "-", "--timestamp=none", str(fw_item)], check=False)
+
+        print("[package_ipa] Ad-hoc signing main app bundle...")
         entitlements = ROOT / "ios" / "l4d2recomp.entitlements"
         sign_cmd = ["codesign", "--force", "--sign", "-", "--timestamp=none"]
         if entitlements.exists():
@@ -209,13 +265,30 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
         sign_cmd.append(str(dest_app))
         subprocess.run(sign_cmd, check=False)
 
-    print(f"[package_ipa] Archiving to {output_ipa}...")
-    with zipfile.ZipFile(output_ipa, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, dirs, files in os.walk(temp_payload):
-            for file in files:
-                p = pathlib.Path(root) / file
-                arcname = p.relative_to(temp_payload)
-                zf.write(p, arcname)
+    # 8. Archive with native zip to preserve UNIX 0755 permissions
+    print(f"[package_ipa] Archiving to {output_ipa} preserving UNIX 0755 execute permissions...")
+    if output_ipa.exists():
+        output_ipa.unlink()
+
+    zip_bin = shutil.which("zip") or "/usr/bin/zip"
+    if os.path.exists(zip_bin):
+        cmd = [zip_bin, "-qry", str(output_ipa.resolve()), "Payload"]
+        subprocess.run(cmd, cwd=str(temp_payload), check=True)
+    elif shutil.which("ditto"):
+        cmd = ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", "Payload", str(output_ipa.resolve())]
+        subprocess.run(cmd, cwd=str(temp_payload), check=True)
+    else:
+        # Fallback to python zipfile, preserving permissions via external_attr
+        with zipfile.ZipFile(output_ipa, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, dirs, files in os.walk(temp_payload):
+                for file in files:
+                    p = pathlib.Path(root) / file
+                    arcname = p.relative_to(temp_payload)
+                    zinfo = zipfile.ZipInfo.from_file(p, str(arcname))
+                    is_exec = (p.name in ["L4D2Recomp", "L4D2Game", "MoltenVK"] or p.suffix in [".dylib", ".so"])
+                    zinfo.external_attr = (0o100755 if is_exec else 0o100644) << 16
+                    with open(p, "rb") as fp:
+                        zf.writestr(zinfo, fp.read(), zipfile.ZIP_DEFLATED)
 
     shutil.rmtree(temp_payload)
     print(f"[package_ipa] Successfully packaged: {output_ipa} ({output_ipa.stat().st_size} bytes)")

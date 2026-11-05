@@ -1,19 +1,17 @@
 #import <UIKit/UIKit.h>
+#import <dlfcn.h>
+#import <fcntl.h>
+#import <unistd.h>
+#import <sys/stat.h>
+#import <pthread.h>
+#import <vector>
+#import <string>
+#import <filesystem>
+
 #import "launcher.h"
 #import "boot_trace.h"
-#import "touch_controls.h"
-#import "ingame_options.h"
-#import "audio/coreaudio_driver.h"
 #import "../../src/logging/logger.h"
 #import "../../src/crash_handler.h"
-#import "../../src/module_loader.h"
-#import "../../src/resolution_hooks.h"
-
-#include <pthread.h>
-#include <vector>
-#include <string>
-#include <filesystem>
-#include <sys/stat.h>
 
 namespace fs = std::filesystem;
 
@@ -41,6 +39,37 @@ static fs::path TemporaryFolder() {
 
 } // namespace l4d2::ios
 
+// ============================================================================
+// STAGE 0: Pre-main() Constructor (Priority 101) - Guarantees boot.txt within 1ms
+// ============================================================================
+__attribute__((constructor(101)))
+static void EarlyBootTrace() {
+    const char* home = getenv("HOME");
+    if (!home) {
+        NSString* nsHome = NSHomeDirectory();
+        home = nsHome.UTF8String;
+    }
+    if (!home) return;
+
+    char docsPath[1024];
+    snprintf(docsPath, sizeof(docsPath), "%s/Documents", home);
+    mkdir(docsPath, 0755);
+
+    char bootPath[1024];
+    snprintf(bootPath, sizeof(bootPath), "%s/Documents/boot.txt", home);
+    int fd = open(bootPath, O_CREAT | O_WRONLY | O_APPEND, 0644);
+    if (fd >= 0) {
+        char msg[256];
+        int len = snprintf(msg, sizeof(msg), "---- early_init (constructor 101), build %s %s, pid=%d\n", __DATE__, __TIME__, getpid());
+        write(fd, msg, len);
+        fsync(fd);
+        close(fd);
+    }
+}
+
+// ============================================================================
+// STAGE 1: Pure Minimal UIKit Launcher (Zero Custom LC_LOAD_DYLIB Dependencies)
+// ============================================================================
 @interface L4D2AppDelegate : UIResponder <UIApplicationDelegate>
 @property (strong, nonatomic) UIWindow *window;
 @property (strong, nonatomic) L4D2LauncherVC *launcherVC;
@@ -56,7 +85,7 @@ static fs::path TemporaryFolder() {
     fs::path logPath = docs / "l4d2.log";
     l4d2::log::Logger::Instance().Init(logPath.string());
     l4d2::boot::SetLogFilePath(logPath.string());
-    L4D2_LOG_INFO("iOS", "L4D2 Recomp iOS Runtime Booting... (Build %s %s)", __DATE__, __TIME__);
+    L4D2_LOG_INFO("iOS", "L4D2 Recomp iOS Pure Launcher Booting... (Build %s %s)", __DATE__, __TIME__);
 
     // 1. Create full screen window
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
@@ -76,81 +105,119 @@ static fs::path TemporaryFolder() {
     return YES;
 }
 
+// ============================================================================
+// STAGE 2: Dynamic dlopen Loading of ReXGlue & L4D2Game Framework on Play
+// ============================================================================
 - (void)startGameWithRoot:(fs::path)gameRoot settings:(NSDictionary*)settings {
-    l4d2::boot::Trace("[Launcher] Starting Source Engine with game root: " + gameRoot.string());
+    l4d2::boot::Trace("[Launcher] Play tapped! Preparing dynamic Stage-2 load...");
+    l4d2::boot::Trace("[Launcher] Game Root: " + gameRoot.string());
 
-    // 1. Pre-activate CoreAudio session for 5.3ms ultra-low latency output
-    rex::audio::ios::PrepareAudioSession();
-    l4d2::boot::Trace("[Audio] CoreAudio session prepared");
+    auto showDlopenError = ^(NSString* libName, const char* err) {
+        NSString* errMsg = err ? [NSString stringWithUTF8String:err] : @"Unknown dynamic linker error";
+        NSString* fullMsg = [NSString stringWithFormat:@"Failed to load %@:\n%@", libName, errMsg];
+        l4d2::boot::Trace([NSString stringWithFormat:@"[FATAL] %@", fullMsg].UTF8String);
 
-    // 2. Apply resolution, FPS cap, and render configuration
-    l4d2::RenderConfig renderCfg;
-    NSString* res = settings[@"resolution"];
-    if ([res isEqualToString:@"480p"]) {
-        renderCfg.resolution = l4d2::ResolutionPreset::Res480p;
-    } else if ([res isEqualToString:@"540p"]) {
-        renderCfg.resolution = l4d2::ResolutionPreset::Res540p;
-    } else {
-        renderCfg.resolution = l4d2::ResolutionPreset::Res720p;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Launch Error"
+                                                                           message:fullMsg
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+            [self.launcherVC presentViewController:alert animated:YES completion:nil];
+        });
+    };
+
+    // 1. Load librexruntime.dylib
+    l4d2::boot::Trace("[dlopen] Loading librexruntime.dylib...");
+    void* hRuntime = dlopen("@executable_path/Frameworks/librexruntime.dylib", RTLD_NOW | RTLD_GLOBAL);
+    if (!hRuntime) {
+        showDlopenError(@"librexruntime.dylib", dlerror());
+        return;
+    }
+    l4d2::boot::Trace("[dlopen] librexruntime.dylib loaded successfully");
+
+    // 2. Load librexgpu-xenos.dylib (loads MoltenVK.framework dynamically)
+    l4d2::boot::Trace("[dlopen] Loading librexgpu-xenos.dylib...");
+    void* hGpu = dlopen("@executable_path/Frameworks/librexgpu-xenos.dylib", RTLD_NOW | RTLD_GLOBAL);
+    if (!hGpu) {
+        showDlopenError(@"librexgpu-xenos.dylib", dlerror());
+        return;
+    }
+    l4d2::boot::Trace("[dlopen] librexgpu-xenos.dylib loaded successfully");
+
+    // 3. Load L4D2Game.framework
+    l4d2::boot::Trace("[dlopen] Loading L4D2Game.framework/L4D2Game...");
+    void* hGame = dlopen("@executable_path/Frameworks/L4D2Game.framework/L4D2Game", RTLD_NOW | RTLD_GLOBAL);
+    if (!hGame) {
+        // Fallback check for direct dylib if not in framework bundle
+        hGame = dlopen("@executable_path/Frameworks/libL4D2Game.dylib", RTLD_NOW | RTLD_GLOBAL);
+    }
+    if (!hGame) {
+        showDlopenError(@"L4D2Game.framework", dlerror());
+        return;
+    }
+    l4d2::boot::Trace("[dlopen] L4D2Game loaded successfully");
+
+    // 4. Resolve L4D2_StartGame entry point
+    typedef int (*L4D2_StartGameFn)(const char*, const char*, const char*);
+    L4D2_StartGameFn startGameFn = (L4D2_StartGameFn)dlsym(hGame, "L4D2_StartGame");
+    if (!startGameFn) {
+        showDlopenError(@"L4D2Game symbol L4D2_StartGame", dlerror());
+        return;
     }
 
-    NSString* fps = settings[@"fps_cap"];
-    if ([fps isEqualToString:@"30"]) {
-        renderCfg.fps_cap = l4d2::FrameRateCap::Fps30;
-    } else if ([fps isEqualToString:@"120"]) {
-        renderCfg.fps_cap = l4d2::FrameRateCap::Fps120;
-    } else {
-        renderCfg.fps_cap = l4d2::FrameRateCap::Fps60;
-    }
-
-    renderCfg.half_res_textures = [settings[@"half_textures"] isEqualToString:@"true"];
-    renderCfg.low_ram_texture_cache = [settings[@"low_ram"] isEqualToString:@"true"];
-    renderCfg.cpu_boost_pinning = [settings[@"cpu_boost"] isEqualToString:@"true"];
-    l4d2::ResolutionManager::Instance().ApplyConfig(renderCfg);
-    l4d2::boot::Trace("[Renderer] RenderConfig applied");
-
-    // 3. Install Mobile Shooter Touch HUD & FPS Counter
-    l4d2::touch::TouchConfig touchCfg;
-    touchCfg.style = [settings[@"control_style"] isEqualToString:@"xbox"] ?
-                     l4d2::touch::ControlStyle::Xbox360Pad : l4d2::touch::ControlStyle::L4D2ShooterMode;
-    touchCfg.drag_to_look = [settings[@"drag_look"] isEqualToString:@"true"];
-    l4d2::touch::Install(touchCfg);
-    l4d2::touch::InstallFpsCounter();
-    l4d2::boot::Trace("[Touch] Mobile Shooter Touch HUD installed");
-
-    // 4. Initialize Multi-Module Loader
+    // 5. Serialize settings and invoke entry point
+    NSData* jsonData = [NSJSONSerialization dataWithJSONObject:settings options:0 error:nil];
+    NSString* jsonStr = jsonData ? [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding] : @"{}";
     fs::path docs = l4d2::ios::DocumentsFolder();
     fs::path saveRoot = docs / "SAVE";
-    l4d2::ModuleLoader::Instance().Init(gameRoot.string(), saveRoot.string());
-    l4d2::boot::Trace("[ModuleLoader] Initialized");
 
-    // 5. Dispatch default.xex entry point
-    l4d2::boot::Trace("[Game] Dispatching default.xex entrypoint...");
-    void* handle = nullptr;
-    uint32_t status = l4d2::ModuleLoader::Instance().XexLoadImage("default.xex", 0, 0, &handle);
-    char statusBuf[128];
-    snprintf(statusBuf, sizeof(statusBuf), "[Game] XexLoadImage returned status: 0x%08X", status);
-    l4d2::boot::Trace(statusBuf);
+    l4d2::boot::Trace("[dlopen] Calling L4D2_StartGame...");
+    startGameFn(gameRoot.string().c_str(), saveRoot.string().c_str(), jsonStr.UTF8String);
 }
 
 @end
 
+// ============================================================================
+// Genuine iOS main() Entrypoint (NEVER Hijacked by SDL_main)
+// ============================================================================
 int main(int argc, char* argv[]) {
+    // 1. Immediate Line 1 POSIX boot trace + fsync
+    const char* home = getenv("HOME");
+    if (!home) {
+        NSString* nsHome = NSHomeDirectory();
+        home = nsHome.UTF8String;
+    }
+    if (home) {
+        char docsPath[1024];
+        snprintf(docsPath, sizeof(docsPath), "%s/Documents", home);
+        mkdir(docsPath, 0755);
+        char bootPath[1024];
+        snprintf(bootPath, sizeof(bootPath), "%s/Documents/boot.txt", home);
+        int fd = open(bootPath, O_CREAT | O_WRONLY | O_APPEND, 0644);
+        if (fd >= 0) {
+            char msg[256];
+            int len = snprintf(msg, sizeof(msg), "---- main_entered (Line 1), build %s %s, argc=%d\n", __DATE__, __TIME__, argc);
+            write(fd, msg, len);
+            fsync(fd);
+            close(fd);
+        }
+    }
+
     @autoreleasepool {
-        // 1. Enforce 8 MiB host stack for guest threads (Source Engine BSP trace, Havok & Director pathfinding)
+        // 2. Enforce 8 MiB host stack for guest threads
         pthread_attr_t attr;
         if (pthread_attr_init(&attr) == 0) {
             constexpr size_t kMinHostStack = 8 * 1024 * 1024; // 8 MiB
             pthread_attr_setstacksize(&attr, kMinHostStack);
         }
 
-        // 2. Resolve sandbox directories early via Foundation
+        // 3. Resolve sandbox directories early via Foundation
         const fs::path docs = l4d2::ios::DocumentsFolder();
         const fs::path caches = l4d2::ios::CachesFolder();
         const fs::path app_support = l4d2::ios::ApplicationSupportFolder();
         const fs::path tmp = l4d2::ios::TemporaryFolder();
 
-        // 3. Pre-create writable sandbox directories before any component can touch them
+        // 4. Pre-create writable sandbox directories before any component can touch them
         std::error_code ec;
         fs::create_directories(docs, ec);
         fs::create_directories(docs / "logs", ec);
@@ -162,7 +229,7 @@ int main(int argc, char* argv[]) {
         fs::create_directories(app_support, ec);
         fs::create_directories(tmp, ec);
 
-        // 4. Redirect XDG & Temp env vars so POSIX/XDG libraries never touch ~/.local, ~/.cache, ~/.config
+        // 5. Redirect XDG & Temp env vars so POSIX/XDG libraries never touch ~/.local, ~/.cache, ~/.config
         setenv("XDG_DATA_HOME", (docs / "rex_data").c_str(), 1);
         setenv("XDG_CACHE_HOME", (caches).c_str(), 1);
         setenv("XDG_CONFIG_HOME", (docs / "config").c_str(), 1);
@@ -171,7 +238,7 @@ int main(int argc, char* argv[]) {
             setenv("HOME", docs.parent_path().c_str(), 1);
         }
 
-        // 5. Open Documents/boot.txt and setup alternate signal stack IMMEDIATELY
+        // 6. Open Documents/boot.txt and setup alternate signal stack
         l4d2::boot::SetupAltStack();
         l4d2::boot::Open((docs / "boot.txt").string());
         l4d2::boot::Trace("---- start, build " __DATE__ " " __TIME__);
@@ -179,11 +246,11 @@ int main(int argc, char* argv[]) {
         l4d2::boot::Trace("Caches: " + caches.string());
         l4d2::boot::Trace("XDG_DATA_HOME: " + (docs / "rex_data").string());
 
-        // 6. Install symbolicated crash handler
+        // 7. Install symbolicated crash handler
         l4d2::CrashHandler::SetBootFilePath((docs / "boot.txt").string());
         l4d2::CrashHandler::Install();
 
-        // 7. Start UIApplicationMain on main thread
+        // 8. Start UIApplicationMain on main thread
         l4d2::boot::Trace("[main] Calling UIApplicationMain...");
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([L4D2AppDelegate class]));
     }

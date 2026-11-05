@@ -4,11 +4,13 @@ tools/verify_ios_bundle.py
 Mandatory CI Launch-Readiness Gate:
 Inspects unzipped Payload/*.app and fails if:
 1. CFBundleExecutable in Info.plist does not match an executable file in Payload/*.app/ case-for-case.
-2. otool -L on the main binary or any file in Frameworks/ contains /Users/, /tmp/, /opt/, or build/.
-3. otool -l on the main binary is missing LC_RPATH @executable_path/Frameworks.
-4. vtool -show-build on the main binary or any framework/dylib does not say platform IOS.
-5. Missing UIFileSharingEnabled or LSSupportsOpeningDocumentsInPlace in Info.plist.
-6. Forbidden/restricted sideload entitlements present in codesign signature.
+2. otool -L on the main launcher binary contains ANY @rpath, @loader_path, or custom dylibs (Launcher must link ONLY Apple system frameworks!).
+3. otool -L on any binary in Frameworks/ contains /Users/, /tmp/, /opt/, or build/.
+4. otool -l on the main binary is missing LC_RPATH @executable_path/Frameworks.
+5. vtool -show-build on the main binary or any framework/dylib does not say platform IOS.
+6. Missing UIFileSharingEnabled or LSSupportsOpeningDocumentsInPlace in Info.plist.
+7. Forbidden/restricted sideload entitlements present in codesign signature.
+8. Main binary or any framework binary inside the .ipa is missing UNIX +x (0755) execute permissions.
 """
 
 import argparse
@@ -16,6 +18,7 @@ import os
 import pathlib
 import plistlib
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -54,6 +57,14 @@ def verify_bundle(app_dir: pathlib.Path) -> bool:
 
     main_bin = app_dir / exe_name
 
+    # Check executable permission bit on disk
+    st = main_bin.stat()
+    if not (st.st_mode & stat.S_IXUSR):
+        print(f"[ERROR] Main binary {main_bin.name} is missing execute permissions (-rwxr-xr-x)! Mode: {oct(st.st_mode)}")
+        failed = True
+    else:
+        print(f"[PASS] Main binary {main_bin.name} has execute permissions ({oct(st.st_mode)}).")
+
     # Check Info.plist mandatory iOS keys
     if plist.get("CFBundlePackageType") != "APPL":
         print(f"[ERROR] CFBundlePackageType is '{plist.get('CFBundlePackageType')}', expected 'APPL'")
@@ -83,7 +94,7 @@ def verify_bundle(app_dir: pathlib.Path) -> bool:
             if p.is_file() and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store', '.txt')):
                 binaries.append(p)
 
-    # 2. Check otool -L for leaked build machine paths
+    # 2. Check otool -L for leaked build machine paths and enforce Pure Launcher
     forbidden_prefixes = ["/Users/", "/tmp/", "/opt/", "build/"]
     print(f"\n[CI] Auditing dyld linkage across {len(binaries)} binaries...")
 
@@ -101,10 +112,21 @@ def verify_bundle(app_dir: pathlib.Path) -> bool:
                 continue
             dep = line_str.split()[0]
             print(f"    {line_str}")
+
+            # Main launcher must have ZERO @rpath or custom dependencies
+            if b == main_bin:
+                if any(k in dep for k in ["@rpath", "@loader_path", "rexruntime", "rexgpu", "MoltenVK", "L4D2Game", "libvulkan", "AppKit", "IOKit"]):
+                    print(f"[ERROR] Main launcher binary contains custom load-time dependency: {dep}")
+                    print(f"        Main executable must link ONLY Apple system frameworks!")
+                    failed = True
+
             for bad in forbidden_prefixes:
                 if bad in dep:
                     print(f"[ERROR] Binary {b.name} contains build machine path: {dep}")
                     failed = True
+
+    if not failed:
+        print(f"\n[PASS] Main launcher binary verified: ZERO load-time @rpath or custom dylibs.")
 
     # 3. Check otool -l on main binary for LC_RPATH = @executable_path/Frameworks
     print(f"\n[CI] Auditing LC_RPATH in {main_bin.name}...")
@@ -177,6 +199,21 @@ def verify_bundle(app_dir: pathlib.Path) -> bool:
     return True
 
 
+def verify_ipa_permissions(ipa_path: pathlib.Path) -> bool:
+    """Verifies that executable binaries have UNIX 0755 (-rwxr-xr-x) permissions inside the ZIP."""
+    print(f"\n[CI Gate] Auditing UNIX file permissions inside {ipa_path.name}...")
+    with zipfile.ZipFile(ipa_path, "r") as zf:
+        for zinfo in zf.infolist():
+            if zinfo.filename.endswith("/L4D2Recomp") or zinfo.filename.endswith("/L4D2Game") or zinfo.filename.endswith("/MoltenVK"):
+                mode = (zinfo.external_attr >> 16) & 0o777
+                print(f"    {zinfo.filename}: mode = {oct(mode)}")
+                if not (mode & 0o111):
+                    print(f"[ERROR] {zinfo.filename} inside ZIP has mode {oct(mode)}, missing execute (+x) permission!")
+                    return False
+    print("[PASS] All executable binaries inside ZIP have valid UNIX execute (+x) permissions.")
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify iOS .app bundle launch-readiness.")
     parser.add_argument("--ipa", type=pathlib.Path, default=None, help="Path to .ipa package")
@@ -188,6 +225,9 @@ def main():
         sys.exit(0 if ok else 1)
 
     if args.ipa and args.ipa.is_file():
+        if not verify_ipa_permissions(args.ipa):
+            sys.exit(1)
+
         temp_dir = tempfile.mkdtemp(prefix="ipa_verify_")
         try:
             print(f"[CI Gate] Unpacking {args.ipa} to {temp_dir}...")
@@ -209,4 +249,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
