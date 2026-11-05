@@ -694,12 +694,12 @@ static NSString* AboutText() {
 //  Document Picker & File Operations
 // ---------------------------------------------------------------------------
 - (void)openDocumentPicker {
-    NSArray<UTType*>* types = @[
-        [UTType typeWithFilenameExtension:@"iso"],
-        UTTypeFolder,
-        UTTypeItem,
-        UTTypeData
-    ];
+    NSMutableArray<UTType*>* types = [NSMutableArray array];
+    UTType* isoType = [UTType typeWithFilenameExtension:@"iso"];
+    if (isoType) [types addObject:isoType];
+    [types addObject:UTTypeFolder];
+    [types addObject:UTTypeItem];
+    [types addObject:UTTypeData];
     UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:types asCopy:YES];
     picker.delegate = self;
     picker.allowsMultipleSelection = NO;
@@ -726,7 +726,11 @@ static NSString* AboutText() {
 }
 
 - (void)onRestoreSaves {
-    NSArray<UTType*>* types = @[ UTTypeZipArchive, [UTType typeWithFilenameExtension:@"zip"] ];
+    NSMutableArray<UTType*>* types = [NSMutableArray arrayWithObject:UTTypeZIP];
+    UTType* zipExt = [UTType typeWithFilenameExtension:@"zip"];
+    if (zipExt && ![types containsObject:zipExt]) {
+        [types addObject:zipExt];
+    }
     UIDocumentPickerViewController* picker = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:types asCopy:YES];
     picker.delegate = self;
     [self presentViewController:picker animated:YES completion:nil];
