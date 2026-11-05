@@ -6,8 +6,13 @@
 
 #import <UIKit/UIKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -116,7 +121,9 @@ static UIWindow* GetKeyWindow() {
                 break;
             } else if (entry.is_regular_file()) {
                 std::string ext = entry.path().extension().string();
-                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                for (char& c : ext) {
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                }
                 if (ext == ".iso") {
                     s_selected_game_root = entry.path();
                     s_disc_verified = true;
@@ -139,7 +146,11 @@ static UIWindow* GetKeyWindow() {
     if (w < 100 || h < 100) {
         w = [UIScreen mainScreen].bounds.size.width;
         h = [UIScreen mainScreen].bounds.size.height;
-        if (w < h) std::swap(w, h); // Default landscape
+        if (w < h) {
+            CGFloat tmp = w;
+            w = h;
+            h = tmp;
+        } // Default landscape
     }
 
     // Background Swamp Grunge Gradient

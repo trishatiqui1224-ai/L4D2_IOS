@@ -27,3 +27,4 @@ void SetLastPPCBreadcrumb(uint32_t fn_addr, uint32_t lr, uint32_t r3);
 size_t FormatLastPPCBreadcrumbs(char* buf, size_t buf_size);
 
 }  // namespace l4d2::boot
+

@@ -44,6 +44,7 @@ static fs::path TemporaryFolder() {
 @interface L4D2AppDelegate : UIResponder <UIApplicationDelegate>
 @property (strong, nonatomic) UIWindow *window;
 @property (strong, nonatomic) L4D2LauncherVC *launcherVC;
+- (void)startGameWithRoot:(fs::path)gameRoot settings:(NSDictionary*)settings;
 @end
 
 @implementation L4D2AppDelegate

@@ -10,6 +10,7 @@
 #include <sys/ucontext.h>
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -18,7 +19,9 @@
 #include <cstring>
 #include <ctime>
 #include <exception>
+#include <initializer_list>
 #include <string>
+#include <utility>
 
 namespace l4d2::boot {
 
@@ -84,56 +87,59 @@ void OnSignal(int sig, siginfo_t* info, void* context) {
 #if defined(__APPLE__) && defined(__arm64__)
     if (context) {
         auto uctx = reinterpret_cast<ucontext_t*>(context);
-        auto mc = uctx->uc_mcontext;
-#if __DARWIN_OPAQUE_ARM_THREAD_STATE64
-        uintptr_t pc = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_pc);
-        uintptr_t lr = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_lr);
-        uintptr_t sp = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_sp);
-        uintptr_t fp = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_fp);
+        if (uctx && uctx->uc_mcontext) {
+            auto mc = uctx->uc_mcontext;
+            uintptr_t pc = 0, lr = 0, sp = 0, fp = 0;
+#if defined(__DARWIN_OPAQUE_ARM_THREAD_STATE64) && __DARWIN_OPAQUE_ARM_THREAD_STATE64
+            pc = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_pc);
+            lr = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_lr);
+            sp = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_sp);
+            fp = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_fp);
 #else
-        uintptr_t pc = mc->__ss.__pc;
-        uintptr_t lr = mc->__ss.__lr;
-        uintptr_t sp = mc->__ss.__sp;
-        uintptr_t fp = mc->__ss.__fp;
+            pc = static_cast<uintptr_t>(mc->__ss.__pc);
+            lr = static_cast<uintptr_t>(mc->__ss.__lr);
+            sp = static_cast<uintptr_t>(mc->__ss.__sp);
+            fp = static_cast<uintptr_t>(mc->__ss.__fp);
 #endif
-        Dl_info pc_info{};
-        const char* pc_img = "unknown";
-        const char* pc_sym = "?";
-        uintptr_t pc_base = 0;
-        uintptr_t pc_saddr = 0;
-        if (dladdr(reinterpret_cast<void*>(pc), &pc_info)) {
-            if (pc_info.dli_fname) pc_img = pc_info.dli_fname;
-            pc_base = reinterpret_cast<uintptr_t>(pc_info.dli_fbase);
-            if (pc_info.dli_sname) pc_sym = pc_info.dli_sname;
-            pc_saddr = reinterpret_cast<uintptr_t>(pc_info.dli_saddr);
+            Dl_info pc_info{};
+            const char* pc_img = "unknown";
+            const char* pc_sym = "?";
+            uintptr_t pc_base = 0;
+            uintptr_t pc_saddr = 0;
+            if (dladdr(reinterpret_cast<void*>(pc), &pc_info)) {
+                if (pc_info.dli_fname) pc_img = pc_info.dli_fname;
+                pc_base = reinterpret_cast<uintptr_t>(pc_info.dli_fbase);
+                if (pc_info.dli_sname) pc_sym = pc_info.dli_sname;
+                pc_saddr = reinterpret_cast<uintptr_t>(pc_info.dli_saddr);
+            }
+            Dl_info lr_info{};
+            const char* lr_img = "unknown";
+            const char* lr_sym = "?";
+            uintptr_t lr_base = 0;
+            uintptr_t lr_saddr = 0;
+            if (dladdr(reinterpret_cast<void*>(lr), &lr_info)) {
+                if (lr_info.dli_fname) lr_img = lr_info.dli_fname;
+                lr_base = reinterpret_cast<uintptr_t>(lr_info.dli_fbase);
+                if (lr_info.dli_sname) lr_sym = lr_info.dli_sname;
+                lr_saddr = reinterpret_cast<uintptr_t>(lr_info.dli_saddr);
+            }
+            intptr_t slide = _dyld_get_image_vmaddr_slide(0);
+            len += snprintf(buf + len, sizeof(buf) - len,
+                            "ARM64 Registers:\n"
+                            "  pc: 0x%016llX (%s + 0x%llX [%s + 0x%llX], slide=0x%llX)\n"
+                            "  lr: 0x%016llX (%s + 0x%llX [%s + 0x%llX])\n"
+                            "  sp: 0x%016llX\n"
+                            "  fp: 0x%016llX\n",
+                            static_cast<unsigned long long>(pc), pc_img,
+                            static_cast<unsigned long long>(pc - pc_base),
+                            pc_sym, static_cast<unsigned long long>(pc_saddr ? (pc - pc_saddr) : 0),
+                            static_cast<unsigned long long>(slide),
+                            static_cast<unsigned long long>(lr), lr_img,
+                            static_cast<unsigned long long>(lr - lr_base),
+                            lr_sym, static_cast<unsigned long long>(lr_saddr ? (lr - lr_saddr) : 0),
+                            static_cast<unsigned long long>(sp),
+                            static_cast<unsigned long long>(fp));
         }
-        Dl_info lr_info{};
-        const char* lr_img = "unknown";
-        const char* lr_sym = "?";
-        uintptr_t lr_base = 0;
-        uintptr_t lr_saddr = 0;
-        if (dladdr(reinterpret_cast<void*>(lr), &lr_info)) {
-            if (lr_info.dli_fname) lr_img = lr_info.dli_fname;
-            lr_base = reinterpret_cast<uintptr_t>(lr_info.dli_fbase);
-            if (lr_info.dli_sname) lr_sym = lr_info.dli_sname;
-            lr_saddr = reinterpret_cast<uintptr_t>(lr_info.dli_saddr);
-        }
-        intptr_t slide = _dyld_get_image_vmaddr_slide(0);
-        len += snprintf(buf + len, sizeof(buf) - len,
-                        "ARM64 Registers:\n"
-                        "  pc: 0x%016llX (%s + 0x%llX [%s + 0x%llX], slide=0x%llX)\n"
-                        "  lr: 0x%016llX (%s + 0x%llX [%s + 0x%llX])\n"
-                        "  sp: 0x%016llX\n"
-                        "  fp: 0x%016llX\n",
-                        static_cast<unsigned long long>(pc), pc_img,
-                        static_cast<unsigned long long>(pc - pc_base),
-                        pc_sym, static_cast<unsigned long long>(pc_saddr ? (pc - pc_saddr) : 0),
-                        static_cast<unsigned long long>(slide),
-                        static_cast<unsigned long long>(lr), lr_img,
-                        static_cast<unsigned long long>(lr - lr_base),
-                        lr_sym, static_cast<unsigned long long>(lr_saddr ? (lr - lr_saddr) : 0),
-                        static_cast<unsigned long long>(sp),
-                        static_cast<unsigned long long>(fp));
     }
 #endif
 
@@ -263,7 +269,8 @@ void Open(const std::string& path) {
     g_boot_fd.store(fd, std::memory_order_release);
     SetupAltStack();
     std::set_terminate(OnTerminate);
-    for (int sig : {SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE, SIGTRAP}) {
+    const int sigs[] = {SIGSEGV, SIGBUS, SIGABRT, SIGILL, SIGFPE, SIGTRAP};
+    for (int sig : sigs) {
         struct sigaction sa{};
         sa.sa_sigaction = OnSignal;
         sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
