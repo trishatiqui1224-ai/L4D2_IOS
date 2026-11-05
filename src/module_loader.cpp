@@ -6,10 +6,6 @@
 #include <iomanip>
 #include <sstream>
 
-namespace l4d2 {
-
-namespace fs = std::filesystem;
-
 namespace rex::runtime { class IModuleRegistrar; }
 struct PPCFuncMapping { uint32_t address; void (*function)(); };
 
@@ -36,6 +32,10 @@ DECLARE_MODULE_SYMBOLS(filesystem)
 DECLARE_MODULE_SYMBOLS(vstdlib)
 DECLARE_MODULE_SYMBOLS(tier0)
 DECLARE_MODULE_SYMBOLS(matchmaking)
+
+namespace l4d2 {
+
+namespace fs = std::filesystem;
 
 ModuleLoader& ModuleLoader::Instance() {
     static ModuleLoader instance;

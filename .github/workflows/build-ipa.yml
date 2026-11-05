@@ -93,6 +93,7 @@ jobs:
         run: |
           echo "[CI] Restoring all 19 recompiled Source Engine modules..."
           python3 tools/generate_code.py --unpack-cache
+          python3 tools/make_stubs.py
 
       - name: Prepare ReXGlue iOS SDK & MoltenVK
         run: |

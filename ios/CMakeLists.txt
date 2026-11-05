@@ -226,6 +226,7 @@ set(L4D2_IOS_SOURCES
     ${L4D2_SRC}/module_loader.cpp
     ${L4D2_SRC}/resolution_hooks.cpp
     ${L4D2_SRC}/crash_handler.cpp
+    ${L4D2_SRC}/guest_stubs.cpp
 )
 
 add_executable(L4D2Recomp MACOSX_BUNDLE ${L4D2_IOS_SOURCES})
