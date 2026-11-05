@@ -51,7 +51,7 @@ inline void SDL_RemoveEventWatch(SDL_EventFilter filter, void* userdata) { (void
 #if __has_include("../boot_trace.h")
 #include "../boot_trace.h"
 #else
-namespace nfsmw::boot {
+namespace l4d2::boot {
 inline void Trace(const std::string& msg) { L4D2_LOG_DEBUG("AudioTrace", "%s", msg.c_str()); }
 }
 #endif
@@ -105,7 +105,7 @@ std::atomic<bool> session_activated{false};
 void ActivateSessionOnce() {
   static std::once_flag once;
   std::call_once(once, [] {
-    nfsmw::boot::Trace("audio: activating the session");
+    l4d2::boot::Trace("audio: activating the session");
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
       const auto start = std::chrono::steady_clock::now();
       AVAudioSession* session = AVAudioSession.sharedInstance;
@@ -121,7 +121,7 @@ void ActivateSessionOnce() {
           std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
       char trace_buf[128];
       snprintf(trace_buf, sizeof(trace_buf), "audio: session %s in %.0f ms", active ? "active" : "NOT active", ms);
-      nfsmw::boot::Trace(trace_buf);
+      l4d2::boot::Trace(trace_buf);
       if (!active) {
         L4D2_LOG_WARN("Audio", "AVAudioSession setActive failed: %s", error.localizedDescription.UTF8String);
       }
@@ -139,7 +139,7 @@ void ConfigureSession() {
   if (!session_activated &&
       dispatch_semaphore_wait(session_ready, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC)) != 0) {
     REXLOG_WARN("[coreaudio] the audio session is still activating after 3 s: starting without waiting");
-    nfsmw::boot::Trace("audio: session still activating after 3 s, going on without it");
+    l4d2::boot::Trace("audio: session still activating after 3 s, going on without it");
     return;
   }
   AVAudioSession* session = AVAudioSession.sharedInstance;
