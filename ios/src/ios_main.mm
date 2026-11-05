@@ -11,7 +11,6 @@
 #import "launcher.h"
 #import "boot_trace.h"
 #import "../../src/logging/logger.h"
-#import "../../src/crash_handler.h"
 
 namespace fs = std::filesystem;
 
@@ -246,11 +245,7 @@ int main(int argc, char* argv[]) {
         l4d2::boot::Trace("Caches: " + caches.string());
         l4d2::boot::Trace("XDG_DATA_HOME: " + (docs / "rex_data").string());
 
-        // 7. Install symbolicated crash handler
-        l4d2::CrashHandler::SetBootFilePath((docs / "boot.txt").string());
-        l4d2::CrashHandler::Install();
-
-        // 8. Start UIApplicationMain on main thread
+        // 7. Start UIApplicationMain on main thread
         l4d2::boot::Trace("[main] Calling UIApplicationMain...");
         return UIApplicationMain(argc, argv, nil, NSStringFromClass([L4D2AppDelegate class]));
     }

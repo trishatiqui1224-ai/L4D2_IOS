@@ -30,6 +30,11 @@ int L4D2_StartGame(const char* game_root_cstr, const char* save_root_cstr, const
         settings = @{};
     }
 
+    // 0. Install symbolicated crash handler for guest execution
+    l4d2::CrashHandler::SetBootFilePath((saveRoot / "boot.txt").string());
+    l4d2::CrashHandler::Install();
+    l4d2::boot::Trace("[CrashHandler] Installed symbolicated guest crash handler");
+
     // 1. Pre-activate CoreAudio session for 5.3ms ultra-low latency output
     rex::audio::ios::PrepareAudioSession();
     l4d2::boot::Trace("[Audio] CoreAudio session prepared");
@@ -83,3 +88,4 @@ int L4D2_StartGame(const char* game_root_cstr, const char* save_root_cstr, const
 
     return (status == 0) ? 0 : 1;
 }
+

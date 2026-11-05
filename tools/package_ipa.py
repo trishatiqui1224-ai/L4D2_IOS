@@ -39,15 +39,21 @@ def fix_rpaths_and_install_names(dest_app: pathlib.Path):
         # 2. Stage & configure L4D2Game.framework
         game_bin = fw_dir / "L4D2Game.framework" / "L4D2Game"
         if not game_bin.exists():
-            for cand in [
+            cands = [
                 fw_dir / "libL4D2Game.dylib",
+                fw_dir / "L4D2Game.dylib",
                 fw_dir / "L4D2Game",
                 ROOT / "build" / "L4D2Game",
+                ROOT / "build" / "L4D2Game.dylib",
                 ROOT / "build" / "libL4D2Game.dylib",
                 ROOT / "build" / "Release-iphoneos" / "L4D2Game",
                 ROOT / "build" / "Release-iphoneos" / "libL4D2Game.dylib",
-            ]:
-                if cand.exists():
+                *ROOT.glob("**/libL4D2Game.dylib"),
+                *ROOT.glob("**/L4D2Game.dylib"),
+                *ROOT.glob("**/L4D2Game"),
+            ]
+            for cand in cands:
+                if cand.is_file() and not str(cand).endswith((".cpp", ".o", ".h", ".d", ".plist", ".json")):
                     print(f"[package_ipa] Staging L4D2Game from {cand}...")
                     game_fw = fw_dir / "L4D2Game.framework"
                     game_fw.mkdir(parents=True, exist_ok=True)

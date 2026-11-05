@@ -227,7 +227,6 @@ set(L4D2_LAUNCHER_SOURCES
     src/touch_controls.mm
     src/ingame_options.mm
     ${L4D2_SRC}/logging/logger.cpp
-    ${L4D2_SRC}/crash_handler.cpp
 )
 
 add_executable(L4D2Recomp MACOSX_BUNDLE ${L4D2_LAUNCHER_SOURCES})
@@ -294,9 +293,14 @@ add_library(L4D2Game SHARED ${L4D2_GAME_SOURCES})
 
 set_target_properties(L4D2Game PROPERTIES
     OUTPUT_NAME "L4D2Game"
+    PREFIX ""
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "@executable_path/Frameworks;@loader_path;@loader_path/.."
     INSTALL_NAME_DIR "@rpath/L4D2Game.framework"
+)
+
+target_link_options(L4D2Game PRIVATE
+    "-Wl,-undefined,dynamic_lookup"
 )
 
 target_compile_options(L4D2Game PRIVATE
