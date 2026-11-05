@@ -427,8 +427,8 @@ fs::path Documents() {
 
 fs::path Run(const fs::path& documents) {
     s_documents = documents;
-    bool finished = false;
-    fs::path chosen;
+    __block bool finished = false;
+    __block fs::path chosen;
 
     UIWindowScene* scene = nil;
     for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {

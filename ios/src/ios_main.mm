@@ -64,7 +64,7 @@ static fs::path TemporaryFolder() {
 
     // 2. Instantiate interactive Left 4 Dead 2 Launcher
     self.launcherVC = [[L4D2LauncherVC alloc] initWithDocuments:docs];
-    __weak typeof(self) weakSelf = self;
+    __weak L4D2AppDelegate* weakSelf = self;
     self.launcherVC.onPlayHandler = ^(fs::path gameRoot, NSDictionary* settings) {
         [weakSelf startGameWithRoot:gameRoot settings:settings];
     };
@@ -112,7 +112,7 @@ static fs::path TemporaryFolder() {
     // 3. Install Mobile Shooter Touch HUD & FPS Counter
     l4d2::touch::TouchConfig touchCfg;
     touchCfg.style = [settings[@"control_style"] isEqualToString:@"xbox"] ?
-                     l4d2::touch::ControlStyle::XboxStandard : l4d2::touch::ControlStyle::L4D2ShooterMode;
+                     l4d2::touch::ControlStyle::Xbox360Pad : l4d2::touch::ControlStyle::L4D2ShooterMode;
     touchCfg.drag_to_look = [settings[@"drag_look"] isEqualToString:@"true"];
     l4d2::touch::Install(touchCfg);
     l4d2::touch::InstallFpsCounter();
