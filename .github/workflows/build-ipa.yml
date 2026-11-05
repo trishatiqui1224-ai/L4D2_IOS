@@ -24,7 +24,7 @@ permissions:
 jobs:
   build-ios:
     name: Build L4D2 Recomp iOS (ARM64)
-    runs-on: macos-14
+    runs-on: macos-15
 
     steps:
       - name: Checkout Repository
@@ -196,7 +196,7 @@ jobs:
 
           # 4. Verify _OBJC_CLASS_$_SDLUIKitDelegate exists in EXACTLY 1 binary in the entire bundle (owned by librexruntime.dylib)
           echo "[CI] Auditing _OBJC_CLASS_\$_SDLUIKitDelegate definition across app bundle..."
-          DELEGATE_MATCHES=$(find /tmp/ipa_inspect/Payload/L4D2Recomp.app -type f -exec nm -gU {} 2>/dev/null \; | grep -c "_OBJC_CLASS_\$_SDLUIKitDelegate" || true)
+          DELEGATE_MATCHES=$(find /tmp/ipa_inspect/Payload/L4D2Recomp.app -type f -exec nm -gU {} + 2>/dev/null | grep -F -c '_OBJC_CLASS_$_SDLUIKitDelegate' || true)
           echo "SDLUIKitDelegate symbol definitions found: $DELEGATE_MATCHES"
           if [ "$DELEGATE_MATCHES" -ne 1 ]; then
             echo "FATAL: Expected exactly 1 _OBJC_CLASS_\$_SDLUIKitDelegate in the entire bundle (in librexruntime.dylib), found $DELEGATE_MATCHES!"
