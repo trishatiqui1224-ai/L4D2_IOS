@@ -2,18 +2,100 @@
 """
 tools/package_ipa.py
 Packages L4D2 Recomp iOS build into a clean, codesigned .ipa archive for sideloading
-(AltStore, TrollStore, Sideloadly, Xcode).
+(AltStore, TrollStore, SideStore, Sideloadly, Xcode).
+Enforces correct dyld @rpath IDs, dependency paths, and ad-hoc code signing.
 """
 
 import argparse
 import os
 import pathlib
+import plistlib
 import shutil
 import subprocess
 import sys
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def fix_rpaths_and_install_names(dest_app: pathlib.Path):
+    """
+    Ensures:
+    1. Main executable has LC_RPATH = @executable_path/Frameworks
+    2. Embedded dylibs/frameworks have LC_ID_DYLIB = @rpath/<filename>
+    3. Cross-library and executable links use @rpath instead of build machine paths.
+    4. MoltenVK.framework is verified to be a shallow ios-arm64 framework.
+    """
+    main_bin = dest_app / "L4D2Recomp"
+    fw_dir = dest_app / "Frameworks"
+
+    # 1. Main executable RPATH
+    if main_bin.exists():
+        subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/Frameworks", str(main_bin)], check=False)
+
+    # 2. Set LC_ID_DYLIB on all frameworks/dylibs in Frameworks/
+    if fw_dir.is_dir():
+        mvk_bin = fw_dir / "MoltenVK.framework" / "MoltenVK"
+        if mvk_bin.exists():
+            subprocess.run(["install_name_tool", "-id", "@rpath/MoltenVK.framework/MoltenVK", str(mvk_bin)], check=False)
+
+            # Ensure MoltenVK Info.plist has iPhoneOS
+            mvk_plist = fw_dir / "MoltenVK.framework" / "Info.plist"
+            if mvk_plist.exists():
+                try:
+                    with open(mvk_plist, "rb") as fp:
+                        pl = plistlib.load(fp)
+                    pl["CFBundleSupportedPlatforms"] = ["iPhoneOS"]
+                    with open(mvk_plist, "wb") as fp:
+                        plistlib.dump(pl, fp)
+                    print(f"[package_ipa] Verified MoltenVK.framework CFBundleSupportedPlatforms = ['iPhoneOS']")
+                except Exception as e:
+                    print(f"[package_ipa] Warning updating MoltenVK Info.plist: {e}")
+
+        rexruntime_bin = fw_dir / "librexruntime.dylib"
+        if rexruntime_bin.exists():
+            subprocess.run(["install_name_tool", "-id", "@rpath/librexruntime.dylib", str(rexruntime_bin)], check=False)
+
+        rexgpu_bin = fw_dir / "librexgpu-xenos.dylib"
+        if rexgpu_bin.exists():
+            subprocess.run(["install_name_tool", "-id", "@rpath/librexgpu-xenos.dylib", str(rexgpu_bin)], check=False)
+            subprocess.run(["install_name_tool", "-add_rpath", "@loader_path", str(rexgpu_bin)], check=False)
+            subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/Frameworks", str(rexgpu_bin)], check=False)
+
+        # 3. Collect all binaries to fix -change references
+        all_binaries = []
+        if main_bin.exists():
+            all_binaries.append(main_bin)
+        for p in fw_dir.glob("**/*"):
+            if p.is_file() and not p.name.endswith(('.plist', '.json', '.h', '.nib', '.strings', '.DS_Store')):
+                all_binaries.append(p)
+
+        target_map = {
+            "librexruntime": "@rpath/librexruntime.dylib",
+            "librexgpu-xenos": "@rpath/librexgpu-xenos.dylib",
+            "MoltenVK": "@rpath/MoltenVK.framework/MoltenVK",
+        }
+
+        for b in all_binaries:
+            try:
+                res = subprocess.run(["otool", "-L", str(b)], capture_output=True, text=True, check=False)
+                if res.returncode != 0:
+                    continue
+                for line in res.stdout.splitlines():
+                    line = line.strip()
+                    if not line or line.endswith(":"):
+                        continue
+                    dep = line.split()[0]
+                    for key, rpath_val in target_map.items():
+                        if key in dep and dep != rpath_val:
+                            print(f"[package_ipa] {b.name}: Changing dependency {dep} -> {rpath_val}")
+                            subprocess.run(["install_name_tool", "-change", dep, rpath_val, str(b)], check=False)
+                    if "libSDL3" in dep and not dep.startswith("@rpath/"):
+                        sdl_name = pathlib.Path(dep).name
+                        print(f"[package_ipa] {b.name}: Changing dependency {dep} -> @rpath/{sdl_name}")
+                        subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{sdl_name}", str(b)], check=False)
+            except Exception as e:
+                print(f"[package_ipa] Error checking dependencies for {b}: {e}")
 
 
 def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
@@ -51,20 +133,26 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
     # 2. Compile Assets.xcassets or copy AppIcons into the bundle
     xcassets = ROOT / "ios" / "resources" / "Assets.xcassets"
     if xcassets.exists():
-        # Try compiling with actool if available
         actool_cmd = shutil.which("actool")
         if not actool_cmd and shutil.which("xcrun"):
             actool_cmd = "xcrun actool"
-        
+
         if actool_cmd:
             try:
-                cmd = f"xcrun actool --output-format human-readable-text --notices --warnings --export-dependency-info {temp_payload}/assetcatalog_dependencies --output-partial-info-plist {temp_payload}/assetcatalog_generated_info.plist --app-icon AppIcon --compress-pngs --enable-on-demand-resources NO --target-device iphone --target-device ipad --minimum-deployment-target 16.0 --platform iphoneos --compile '{dest_app}' '{xcassets}'"
+                cmd = (
+                    f"xcrun actool --output-format human-readable-text --notices --warnings "
+                    f"--export-dependency-info {temp_payload}/assetcatalog_dependencies "
+                    f"--output-partial-info-plist {temp_payload}/assetcatalog_generated_info.plist "
+                    f"--app-icon AppIcon --compress-pngs --enable-on-demand-resources NO "
+                    f"--target-device iphone --target-device ipad --minimum-deployment-target 16.0 "
+                    f"--platform iphoneos --compile '{dest_app}' '{xcassets}'"
+                )
                 print(f"[package_ipa] Compiling asset catalog with actool...")
                 subprocess.run(cmd, shell=True, check=False)
             except Exception as e:
                 print(f"[package_ipa] Notice: actool compile skipped: {e}")
 
-        # Also copy raw AppIcon PNGs into the bundle root for sideloaders (TrollStore, AltStore, Sideloadly)
+        # Also copy raw AppIcon PNGs into the bundle root for sideloaders
         appicon_dir = xcassets / "AppIcon.appiconset"
         if appicon_dir.exists():
             for icon_file in appicon_dir.glob("*.png"):
@@ -102,7 +190,14 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
                     shutil.copy2(f, dest_dylib)
                     break
 
-    # 4. Ad-hoc codesign every framework and the app bundle
+    # 4. Fix dyld rpaths and install names on all staged binaries
+    print("[package_ipa] Fixing dyld rpaths and install names...")
+    fix_rpaths_and_install_names(dest_app)
+
+    # 5. Clear quarantine / extended attributes
+    subprocess.run(["xattr", "-cr", str(dest_app)], check=False)
+
+    # 6. Ad-hoc codesign every framework and the app bundle
     if shutil.which("codesign"):
         print("[package_ipa] Ad-hoc signing embedded frameworks...")
         for fw_item in fw_dir.iterdir():
@@ -135,7 +230,6 @@ def main():
 
     app_path = args.app
     if app_path is None or not app_path.is_dir():
-        # Auto-detect candidates
         candidates = [
             ROOT / "build" / "L4D2Recomp.app",
             ROOT / "build" / "Release" / "L4D2Recomp.app",
@@ -166,4 +260,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

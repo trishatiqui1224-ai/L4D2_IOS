@@ -17,9 +17,9 @@ struct GuestRegisters {
 class CrashHandler {
 public:
     static void Install();
+    static void SetBootFilePath(const std::string& path);
     static void RecordIndirectCall(uint32_t target_pc, const char* hint);
     static void DumpCrashState(int sig, const GuestRegisters* regs, const char* reason);
 };
 
 } // namespace l4d2
-

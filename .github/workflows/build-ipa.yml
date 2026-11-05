@@ -141,6 +141,10 @@ jobs:
         run: |
           python3 tools/package_ipa.py --out dist/L4D2-Recomp-iOS.ipa
 
+      - name: "Mandatory CI Launch-Readiness Gate: Binary, Frameworks, RPATH & Plist Audit"
+        run: |
+          python3 tools/verify_ios_bundle.py --ipa dist/L4D2-Recomp-iOS.ipa
+
       - name: "Mandatory CI Verification Gate: Binary Size & Symbol Verification"
         run: |
           cd dist

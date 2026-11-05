@@ -23,6 +23,13 @@ namespace l4d2 {
 
 static GuestRegisters s_last_regs;
 static bool s_has_regs = false;
+static std::string s_boot_path = "boot.txt";
+
+void CrashHandler::SetBootFilePath(const std::string& path) {
+    if (!path.empty()) {
+        s_boot_path = path;
+    }
+}
 
 void CrashHandler::RecordIndirectCall(uint32_t target_pc, const char* hint) {
     char buf[128];
@@ -31,7 +38,7 @@ void CrashHandler::RecordIndirectCall(uint32_t target_pc, const char* hint) {
 }
 
 void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const char* reason) {
-    FILE* boot_file = fopen("boot.txt", "a");
+    FILE* boot_file = fopen(s_boot_path.c_str(), "a");
 
     auto write_out = [&](const std::string& line) {
         L4D2_LOG_FATAL("CRASH", "%s", line.c_str());
@@ -139,4 +146,3 @@ void CrashHandler::Install() {
 #endif
 
 } // namespace l4d2
-

@@ -26,6 +26,9 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
+set(CMAKE_INSTALL_RPATH "@executable_path/Frameworks")
+
 set(L4D2_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 set(L4D2_SRC "${L4D2_ROOT}/src")
 set(L4D2_SDK "${L4D2_ROOT}/../rexglue-sdk-ios" CACHE PATH "ReXGlue SDK for iOS")
@@ -218,6 +221,7 @@ endforeach()
 # =============================================================================
 set(L4D2_IOS_SOURCES
     src/ios_main.mm
+    src/boot_trace.mm
     src/launcher.mm
     src/touch_controls.mm
     src/ingame_options.mm
@@ -234,6 +238,7 @@ add_executable(L4D2Recomp MACOSX_BUNDLE ${L4D2_IOS_SOURCES})
 set_target_properties(L4D2Recomp PROPERTIES
     OUTPUT_NAME "L4D2Recomp"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/Info.plist"
+    BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "@executable_path/Frameworks"
     XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/l4d2recomp.entitlements"
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"

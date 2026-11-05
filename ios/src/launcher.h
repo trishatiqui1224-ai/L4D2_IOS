@@ -6,6 +6,12 @@
 
 #ifdef __OBJC__
 #import <UIKit/UIKit.h>
+
+@interface L4D2LauncherVC : UIViewController <UIDocumentPickerDelegate>
+@property (nonatomic, copy) void (^onPlayHandler)(std::filesystem::path gameRoot, NSDictionary* settings);
+
+- (instancetype)initWithDocuments:(const std::filesystem::path&)documents;
+@end
 #endif
 
 namespace l4d2::launcher {
@@ -14,7 +20,6 @@ namespace l4d2::launcher {
 std::filesystem::path Documents();
 
 // Runs the interactive L4D2 Recomp launcher UI before starting the engine.
-// Returns the verified game data root path when PLAY is tapped.
 std::filesystem::path Run(const std::filesystem::path& documents);
 
 // Returns launch arguments configured in launcher settings
@@ -24,4 +29,3 @@ std::vector<std::string> SettingsArguments(const std::filesystem::path& document
 bool ExportLogsZip(const std::filesystem::path& documents, std::string& out_zip_path);
 
 } // namespace l4d2::launcher
-

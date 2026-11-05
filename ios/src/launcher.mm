@@ -27,7 +27,7 @@ static UIWindow* GetKeyWindow() {
     return nil;
 }
 
-@interface L4D2LauncherVC : UIViewController <UIDocumentPickerDelegate>
+@interface L4D2LauncherVC ()
 @property (nonatomic, strong) UILabel* titleLabel;
 @property (nonatomic, strong) UILabel* statusBadge;
 @property (nonatomic, strong) UISegmentedControl* langSelector;
@@ -54,6 +54,13 @@ static UIWindow* GetKeyWindow() {
 @end
 
 @implementation L4D2LauncherVC
+
+- (instancetype)initWithDocuments:(const fs::path&)documents {
+    if (self = [super init]) {
+        s_documents = documents;
+    }
+    return self;
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -100,6 +107,25 @@ static UIWindow* GetKeyWindow() {
     if (fs::exists(candidate / "default.xex")) {
         s_selected_game_root = candidate;
         s_disc_verified = true;
+    } else {
+        std::error_code ec;
+        for (const auto& entry : fs::directory_iterator(s_documents, fs::directory_options::skip_permission_denied, ec)) {
+            if (entry.is_directory() && fs::exists(entry.path() / "default.xex")) {
+                s_selected_game_root = entry.path();
+                s_disc_verified = true;
+                break;
+            } else if (entry.is_regular_file()) {
+                std::string ext = entry.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                if (ext == ".iso") {
+                    s_selected_game_root = entry.path();
+                    s_disc_verified = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (s_disc_verified) {
         _statusBadge.text = l4d2::i18n::GetText(@"verified_disc", s_language);
         _statusBadge.backgroundColor = [UIColor colorWithRed:0.1 green:0.45 blue:0.15 alpha:0.85];
         _playButton.enabled = YES;
@@ -110,10 +136,15 @@ static UIWindow* GetKeyWindow() {
 - (void)buildUI {
     CGFloat w = self.view.bounds.size.width;
     CGFloat h = self.view.bounds.size.height;
+    if (w < 100 || h < 100) {
+        w = [UIScreen mainScreen].bounds.size.width;
+        h = [UIScreen mainScreen].bounds.size.height;
+        if (w < h) std::swap(w, h); // Default landscape
+    }
 
     // Background Swamp Grunge Gradient
     CAGradientLayer* grad = [CAGradientLayer layer];
-    grad.frame = self.view.bounds;
+    grad.frame = CGRectMake(0, 0, w, h);
     grad.colors = @[
         (id)[UIColor colorWithRed:0.04 green:0.06 blue:0.04 alpha:1.0].CGColor,
         (id)[UIColor colorWithRed:0.11 green:0.14 blue:0.09 alpha:1.0].CGColor
@@ -215,6 +246,7 @@ static UIWindow* GetKeyWindow() {
 - (void)populateTabContent:(NSInteger)tab {
     [_contentScroll.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
     CGFloat scrollW = _contentScroll.bounds.size.width;
+    if (scrollW < 100) scrollW = self.view.bounds.size.width - 48;
     CGFloat y = 16.0;
 
     if (tab == 0) {
@@ -248,35 +280,26 @@ static UIWindow* GetKeyWindow() {
         [_contentScroll addSubview:editBtn];
         y += 56.0;
     } else if (tab == 2) {
-        // Saves & Logs Tab: Backup, Restore, Export Logs .zip
+        // Saves & System: Export Logs, Save Info
         UIButton* logBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        logBtn.frame = CGRectMake(16, y, 260, 42);
-        logBtn.backgroundColor = [UIColor colorWithRed:0.6 green:0.12 blue:0.12 alpha:0.9];
+        logBtn.frame = CGRectMake(16, y, 240, 40);
+        logBtn.backgroundColor = [UIColor colorWithRed:0.2 green:0.3 blue:0.4 alpha:0.9];
         logBtn.layer.cornerRadius = 6.0;
-        [logBtn setTitle:@"Export Diagnostic Logs (.zip)" forState:UIControlStateNormal];
-        logBtn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightBold];
+        [logBtn setTitle:l4d2::i18n::GetText(@"btn_export_logs", s_language) forState:UIControlStateNormal];
+        logBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
         [logBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         [logBtn addTarget:self action:@selector(onExportLogsTapped) forControlEvents:UIControlEventTouchUpInside];
         [_contentScroll addSubview:logBtn];
         y += 56.0;
-
-        UIButton* backupBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        backupBtn.frame = CGRectMake(16, y, 260, 42);
-        backupBtn.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
-        backupBtn.layer.cornerRadius = 6.0;
-        [backupBtn setTitle:@"Backup Saves & Settings (.zip)" forState:UIControlStateNormal];
-        backupBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-        [backupBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        [_contentScroll addSubview:backupBtn];
-        y += 56.0;
     } else if (tab == 3) {
-        // Experimental Tab: Split Screen, DLC Installer
-        [self addSwitchRow:@"2-Player Local Split Screen" key:@"split_screen" y:&y scrollW:scrollW];
+        // Experimental Tab: Split Screen, Addon Loader
+        [self addSwitchRow:@"Vertical Split-Screen" key:@"split_screen" y:&y scrollW:scrollW];
+
         UIButton* dlcBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        dlcBtn.frame = CGRectMake(16, y, 280, 42);
-        dlcBtn.backgroundColor = [UIColor colorWithWhite:0.2 alpha:0.8];
+        dlcBtn.frame = CGRectMake(16, y, 240, 40);
+        dlcBtn.backgroundColor = [UIColor colorWithRed:0.35 green:0.2 blue:0.2 alpha:0.9];
         dlcBtn.layer.cornerRadius = 6.0;
-        [dlcBtn setTitle:@"Install Xbox 360 DLC Package..." forState:UIControlStateNormal];
+        [dlcBtn setTitle:@"Manage Add-ons & VPKs" forState:UIControlStateNormal];
         dlcBtn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
         [dlcBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
         [_contentScroll addSubview:dlcBtn];
@@ -376,7 +399,9 @@ static UIWindow* GetKeyWindow() {
 
 - (void)onPlayTapped {
     [self saveSettings];
-    [self dismissViewControllerAnimated:YES completion:nil];
+    if (self.onPlayHandler) {
+        self.onPlayHandler(s_selected_game_root, _settings);
+    }
 }
 
 @end
@@ -391,14 +416,39 @@ fs::path Documents() {
 
 fs::path Run(const fs::path& documents) {
     s_documents = documents;
-    UIWindow* window = GetKeyWindow();
-    if (!window) return s_selected_game_root;
+    bool finished = false;
+    fs::path chosen;
 
-    L4D2LauncherVC* vc = [[L4D2LauncherVC alloc] init];
+    UIWindowScene* scene = nil;
+    for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+        if ([s isKindOfClass:[UIWindowScene class]] && ((UIWindowScene*)s).screen == [UIScreen mainScreen]) {
+            scene = (UIWindowScene*)s;
+            break;
+        }
+    }
+    UIWindow* window = scene ? [[UIWindow alloc] initWithWindowScene:scene]
+                             : [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    window.backgroundColor = [UIColor colorWithRed:0.06 green:0.08 blue:0.06 alpha:1.0];
+
+    L4D2LauncherVC* vc = [[L4D2LauncherVC alloc] initWithDocuments:documents];
+    vc.onPlayHandler = ^(fs::path gameRoot, NSDictionary* settings) {
+        (void)settings;
+        chosen = gameRoot;
+        finished = true;
+    };
     window.rootViewController = vc;
     [window makeKeyAndVisible];
 
-    return s_selected_game_root;
+    while (!finished) {
+        @autoreleasepool {
+            [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+        }
+    }
+
+    window.hidden = YES;
+    window.rootViewController = nil;
+    window = nil;
+    return chosen;
 }
 
 std::vector<std::string> SettingsArguments(const fs::path& documents) {
