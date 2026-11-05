@@ -180,7 +180,6 @@ protected:
         if (REXCVAR_GET(ios_show_fps)) {
             l4d2::touch::InstallFpsCounter();
         }
-        l4d2::options::Install();
     }
 
     void OnPreLaunchModule() override {
@@ -217,8 +216,18 @@ static void ShowAlertAndHalt(NSString* title, NSString* msg) {
                 }
             }
         }
-        UIViewController* root = win ? win.rootViewController : UIApplication.sharedApplication.keyWindow.rootViewController;
-        [root presentViewController:alert animated:YES completion:nil];
+        UIViewController* root = win ? win.rootViewController : nil;
+        if (!root) {
+            for (UIWindowScene* s in UIApplication.sharedApplication.connectedScenes) {
+                if ([s isKindOfClass:UIWindowScene.class]) {
+                    UIWindow* first = ((UIWindowScene*)s).windows.firstObject;
+                    if (first) { root = first.rootViewController; break; }
+                }
+            }
+        }
+        if (root) {
+            [root presentViewController:alert animated:YES completion:nil];
+        }
     });
 }
 

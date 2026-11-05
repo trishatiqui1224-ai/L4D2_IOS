@@ -84,6 +84,9 @@ add_subdirectory("${L4D2_SDK}" rexglue-sdk)
 # 1.5. Common ReXGlue & Thirdparty Header Configuration
 # =============================================================================
 add_library(l4d2_headers INTERFACE)
+target_compile_definitions(l4d2_headers INTERFACE
+    REXGLUE_BUILD_CONFIG="$<CONFIG>"
+)
 target_include_directories(l4d2_headers INTERFACE
     "${L4D2_ROOT}"
     "${L4D2_SRC}"
@@ -264,6 +267,7 @@ target_compile_definitions(L4D2Recomp PRIVATE
     __APPLE__=1
     _LIBCPP_DISABLE_AVAILABILITY=1
     TITLE_ID="454108D4"
+    REXGLUE_BUILD_CONFIG="$<CONFIG>"
 )
 
 # Pure UIKit Launcher links ONLY Apple system frameworks! ZERO custom @rpath load-time dependencies!
@@ -346,6 +350,7 @@ target_compile_definitions(L4D2Game PRIVATE
     __APPLE__=1
     _LIBCPP_DISABLE_AVAILABILITY=1
     TITLE_ID="454108D4"
+    REXGLUE_BUILD_CONFIG="$<CONFIG>"
 )
 
 target_link_libraries(L4D2Game PRIVATE
