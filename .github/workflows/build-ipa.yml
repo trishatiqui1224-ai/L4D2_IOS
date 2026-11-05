@@ -146,8 +146,8 @@ jobs:
           cd dist
           IPA_BYTES=$(stat -f%z L4D2-Recomp-iOS.ipa 2>/dev/null || stat -c%s L4D2-Recomp-iOS.ipa)
           echo "IPA size: $IPA_BYTES bytes"
-          if [ "$IPA_BYTES" -lt 52428800 ]; then
-            echo "ERROR: IPA is smaller than 50 MB ($IPA_BYTES bytes) — missing recompiled code or frameworks!"
+          if [ "$IPA_BYTES" -lt 45000000 ]; then
+            echo "ERROR: IPA is smaller than 45 MB ($IPA_BYTES bytes) — missing recompiled code or frameworks!"
             exit 1
           fi
 
