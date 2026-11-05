@@ -287,6 +287,7 @@ set(L4D2_GAME_SOURCES
     ${L4D2_SRC}/module_loader.cpp
     ${L4D2_SRC}/resolution_hooks.cpp
     ${L4D2_SRC}/guest_stubs.cpp
+    "${L4D2_SDK}/src/ui/rex_app.cpp"
 )
 
 add_library(L4D2Game SHARED ${L4D2_GAME_SOURCES})

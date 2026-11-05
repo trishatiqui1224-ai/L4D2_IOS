@@ -6,6 +6,8 @@
 #import <pthread.h>
 #import <vector>
 #import <string>
+#import <sstream>
+#import <algorithm>
 #import <filesystem>
 
 #import "launcher.h"
@@ -34,6 +36,93 @@ static fs::path ApplicationSupportFolder() {
 static fs::path TemporaryFolder() {
     NSString* tmp = NSTemporaryDirectory();
     return fs::path(tmp.UTF8String);
+}
+
+static std::string OptionName(const std::string& arg) {
+    return arg.substr(0, arg.find('='));
+}
+
+static void SetArgument(std::vector<std::string>& args, const std::string& arg) {
+    if (args.empty()) {
+        args.push_back(arg);
+        return;
+    }
+    const std::string name = OptionName(arg);
+    if (name.rfind("--", 0) == 0) {
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (OptionName(args[i]) == name) {
+                args[i] = arg;
+                return;
+            }
+        }
+    }
+    args.push_back(arg);
+}
+
+static void ApplyExtraArguments(const fs::path& file, std::vector<std::string>& args) {
+    NSData* data = [NSData dataWithContentsOfFile:[NSString stringWithUTF8String:file.c_str()]];
+    if (!data) return;
+
+    NSString* text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (!text) return;
+
+    if ([text hasPrefix:@"\uFEFF"]) {
+        text = [text substringFromIndex:1];
+    }
+    std::istringstream in(text.UTF8String);
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto a = line.find_first_not_of(" \t");
+        const auto b = line.find_last_not_of(" \t\r\n");
+        if (a == std::string::npos || line[a] == '#') continue;
+        line = line.substr(a, b - a + 1);
+        if (line.compare(0, 2, "--") == 0) {
+            SetArgument(args, line);
+            l4d2::boot::Trace("extra_args.txt: " + line);
+        }
+    }
+}
+
+static std::vector<std::string> GameArguments(const fs::path& docs, const fs::path& gameRoot) {
+    const fs::path caches = CachesFolder();
+    return {
+        "l4d2recomp",
+        "--gpu_plugin=xenos",
+        "--gpu_backend=vulkan",
+        "--render_target_path_vulkan=fbo",
+        "--present_letterbox=true",
+        "--present_allow_overscan_cutoff=false",
+        "--vulkan_sparse_shared_memory=false",
+        "--fullscreen=true",
+        "--resolution_scale=1",
+        "--readback_resolve=fast",
+        "--ios_readback_max_kb=64",
+        "--occlusion_query_enable=false",
+        "--readback_memexport=false",
+        "--gpu_sin_msaa=true",
+        "--audio_maxqframes=64",
+        "--ios_xma_starve_reset=false",
+        "--ios_utility_qos_guest=false",
+        "--ios_utility_qos=false",
+        "--anisotropic_override=4",
+        "--present_effect=none",
+        "--resolution=1280x720",
+        "--ios_display_preset=retina",
+        "--ios_retina=true",
+        "--ios_fps_cap=60",
+        "--mnk_mode=false",
+        "--mnk_mouse=false",
+        "--ios_haptics=true",
+        "--ios_mvk_performance=false",
+        "--user_language=1",
+        "--user_country=103",
+        "--user_data_root=" + (docs / "rex_data").string(),
+        "--cache_root=" + (caches / "rexglue").string(),
+        "--log_file=" + (docs / "l4d2.log").string(),
+        "--log_level=info",
+        "--log_flush_interval=1",
+        "--game_data_root=" + gameRoot.string(),
+    };
 }
 
 } // namespace l4d2::ios
@@ -71,7 +160,8 @@ static void EarlyBootTrace() {
 // ============================================================================
 @interface L4D2AppDelegate : UIResponder <UIApplicationDelegate>
 @property (strong, nonatomic) UIWindow *window;
-@property (strong, nonatomic) L4D2LauncherVC *launcherVC;
+@property (strong, nonatomic) L4D2LauncherController *launcherVC;
+@property (assign, nonatomic) BOOL isLaunching;
 - (void)startGameWithRoot:(fs::path)gameRoot settings:(NSDictionary*)settings;
 @end
 
@@ -86,21 +176,24 @@ static void EarlyBootTrace() {
     l4d2::boot::SetLogFilePath(logPath.string());
     L4D2_LOG_INFO("iOS", "L4D2 Recomp iOS Pure Launcher Booting... (Build %s %s)", __DATE__, __TIME__);
 
-    // 1. Create full screen window
+    // 1. Create full screen dark mode window
     self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    self.window.backgroundColor = [UIColor colorWithRed:0.06 green:0.08 blue:0.06 alpha:1.0];
+    self.window.backgroundColor = [UIColor blackColor];
+    self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
-    // 2. Instantiate interactive Left 4 Dead 2 Launcher
-    self.launcherVC = [[L4D2LauncherVC alloc] initWithDocuments:docs];
+    // 2. Instantiate interactive Left 4 Dead 2 Launcher with NFSCarbon styling
     __weak L4D2AppDelegate* weakSelf = self;
-    self.launcherVC.onPlayHandler = ^(fs::path gameRoot, NSDictionary* settings) {
+    self.launcherVC = [[L4D2LauncherController alloc] initWithDocuments:docs done:^(fs::path gameRoot, NSDictionary* settings) {
         [weakSelf startGameWithRoot:gameRoot settings:settings];
-    };
+    }];
 
-    self.window.rootViewController = self.launcherVC;
+    L4D2LauncherNavigation* nav = [[L4D2LauncherNavigation alloc] initWithRootViewController:self.launcherVC];
+    nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+
+    self.window.rootViewController = nav;
     [self.window makeKeyAndVisible];
 
-    l4d2::boot::Trace("[AppDelegate] Launcher UI successfully presented on main window");
+    l4d2::boot::Trace("[AppDelegate] Native Inset-Grouped Launcher UI presented on window");
     return YES;
 }
 
@@ -108,6 +201,12 @@ static void EarlyBootTrace() {
 // STAGE 2: Dynamic dlopen Loading of ReXGlue & L4D2Game Framework on Play
 // ============================================================================
 - (void)startGameWithRoot:(fs::path)gameRoot settings:(NSDictionary*)settings {
+    if (self.isLaunching) {
+        l4d2::boot::Trace("[Launcher] Guarded against double-tap re-entry");
+        return;
+    }
+    self.isLaunching = YES;
+
     l4d2::boot::Trace("[Launcher] Play tapped! Preparing dynamic Stage-2 load...");
     l4d2::boot::Trace("[Launcher] Game Root: " + gameRoot.string());
 
@@ -122,6 +221,7 @@ static void EarlyBootTrace() {
                                                                     preferredStyle:UIAlertControllerStyleAlert];
             [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
             [self.launcherVC presentViewController:alert animated:YES completion:nil];
+            self.isLaunching = NO;
         });
     };
 
@@ -147,7 +247,6 @@ static void EarlyBootTrace() {
     l4d2::boot::Trace("[dlopen] Loading L4D2Game.framework/L4D2Game...");
     void* hGame = dlopen("@executable_path/Frameworks/L4D2Game.framework/L4D2Game", RTLD_NOW | RTLD_GLOBAL);
     if (!hGame) {
-        // Fallback check for direct dylib if not in framework bundle
         hGame = dlopen("@executable_path/Frameworks/libL4D2Game.dylib", RTLD_NOW | RTLD_GLOBAL);
     }
     if (!hGame) {
@@ -157,21 +256,67 @@ static void EarlyBootTrace() {
     l4d2::boot::Trace("[dlopen] L4D2Game loaded successfully");
 
     // 4. Resolve L4D2_StartGame entry point
-    typedef int (*L4D2_StartGameFn)(const char*, const char*, const char*);
+    typedef int (*L4D2_StartGameFn)(int, char**);
     L4D2_StartGameFn startGameFn = (L4D2_StartGameFn)dlsym(hGame, "L4D2_StartGame");
+    char fnPtrBuf[128];
+    snprintf(fnPtrBuf, sizeof(fnPtrBuf), "[dlopen] Resolved L4D2_StartGame at %p", (void*)startGameFn);
+    l4d2::boot::Trace(fnPtrBuf);
+
     if (!startGameFn) {
         showDlopenError(@"L4D2Game symbol L4D2_StartGame", dlerror());
         return;
     }
 
-    // 5. Serialize settings and invoke entry point
-    NSData* jsonData = [NSJSONSerialization dataWithJSONObject:settings options:0 error:nil];
-    NSString* jsonStr = jsonData ? [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding] : @"{}";
+    // 5. Build arguments
     fs::path docs = l4d2::ios::DocumentsFolder();
-    fs::path saveRoot = docs / "SAVE";
+    auto texts = l4d2::ios::GameArguments(docs, gameRoot);
 
-    l4d2::boot::Trace("[dlopen] Calling L4D2_StartGame...");
-    startGameFn(gameRoot.string().c_str(), saveRoot.string().c_str(), jsonStr.UTF8String);
+    for (const std::string& a : l4d2::launcher::SettingsArguments(docs)) {
+        l4d2::ios::SetArgument(texts, a);
+    }
+    l4d2::ios::ApplyExtraArguments(docs / "extra_args.txt", texts);
+
+    // Hard defaults for stability
+    l4d2::ios::SetArgument(texts, "--ios_xma_starve_reset=false");
+    l4d2::ios::SetArgument(texts, "--ios_utility_qos_guest=false");
+    l4d2::ios::SetArgument(texts, "--ios_utility_qos=false");
+    l4d2::ios::SetArgument(texts, "--ios_retina=true");
+
+    std::vector<char*> args;
+    args.reserve(texts.size() + 1);
+    for (auto& t : texts) {
+        args.push_back(t.data());
+    }
+    args.push_back(nullptr);
+    const int n = static_cast<int>(texts.size());
+
+    // 6. Tear down launcher UIWindow to allow SDL3 to acquire key window
+    [self.launcherVC.view endEditing:YES];
+    self.window.hidden = YES;
+    self.window.rootViewController = nil;
+    self.window = nil;
+
+    l4d2::boot::Trace("[dlopen] Calling L4D2_StartGame with arguments...");
+    int result = startGameFn(n, args.data());
+    l4d2::boot::Trace("[main] L4D2_StartGame exited with code " + std::to_string(result));
+
+    if (result != 0) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Game Terminated"
+                                                                           message:@"Left 4 Dead 2 exited with an error. Check Documents/boot.txt and Documents/l4d2.log for diagnostics."
+                                                                    preferredStyle:UIAlertControllerStyleAlert];
+            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+
+            // Restore launcher window
+            self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+            self.window.backgroundColor = [UIColor blackColor];
+            self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+            self.window.rootViewController = [[L4D2LauncherNavigation alloc] initWithRootViewController:self.launcherVC];
+            [self.window makeKeyAndVisible];
+            [self.launcherVC presentViewController:alert animated:YES completion:nil];
+            self.isLaunching = NO;
+        });
+    }
 }
 
 @end
@@ -236,6 +381,8 @@ int main(int argc, char* argv[]) {
         if (!docs.empty()) {
             setenv("HOME", docs.parent_path().c_str(), 1);
         }
+
+        setenv("SDL_IOS_ORIENTATIONS", "LandscapeLeft LandscapeRight", 1);
 
         // 6. Open Documents/boot.txt and setup alternate signal stack
         l4d2::boot::SetupAltStack();
