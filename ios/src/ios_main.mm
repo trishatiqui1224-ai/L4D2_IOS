@@ -211,9 +211,9 @@ static void EarlyBootTrace() {
     l4d2::boot::Trace("[Launcher] Game Root: " + gameRoot.string());
 
     auto showDlopenError = ^(NSString* libName, const char* err) {
-        NSString* errMsg = err ? [NSString stringWithUTF8String:err] : @"Unknown dynamic linker error";
-        NSString* fullMsg = [NSString stringWithFormat:@"Failed to load %@:\n%@", libName, errMsg];
-        l4d2::boot::Trace([NSString stringWithFormat:@"[FATAL] %@", fullMsg].UTF8String);
+        std::string savedErr = err ? err : "Unknown dynamic linker error";
+        NSString* fullMsg = [NSString stringWithFormat:@"Failed to load %@:\n%s", libName, savedErr.c_str()];
+        l4d2::boot::Trace("[FATAL] " + std::string(fullMsg.UTF8String));
 
         dispatch_async(dispatch_get_main_queue(), ^{
             UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Launch Error"
@@ -225,49 +225,94 @@ static void EarlyBootTrace() {
         });
     };
 
-    // 1. Load librexruntime.dylib
+    // Inspect Frameworks directory contents for diagnostic tracing
+    NSString* fwDir = [[NSBundle mainBundle] privateFrameworksPath];
+    NSFileManager* fm = [NSFileManager defaultManager];
+    NSArray* fwContents = [fm contentsOfDirectoryAtPath:fwDir error:nil];
+    l4d2::boot::Trace("[dlopen] Inspecting Frameworks directory: " + std::string(fwDir ? fwDir.UTF8String : "(null)"));
+    if (fwContents) {
+        for (NSString* item in fwContents) {
+            l4d2::boot::Trace("  - " + std::string(item.UTF8String));
+        }
+    }
+
+    // 1. Strict dependency preload: MoltenVK.framework/MoltenVK
+    l4d2::boot::Trace("[dlopen] Loading MoltenVK.framework/MoltenVK...");
+    dlerror();
+    void* hMvk = dlopen("@executable_path/Frameworks/MoltenVK.framework/MoltenVK", RTLD_NOW | RTLD_GLOBAL);
+    if (!hMvk) {
+        const char* err = dlerror();
+        showDlopenError(@"MoltenVK.framework/MoltenVK", err);
+        return;
+    }
+    l4d2::boot::Trace("[dlopen] MoltenVK.framework/MoltenVK loaded successfully");
+
+    // 2. Strict dependency preload: SDL3 (if dynamic dylib / framework present)
+    NSString* sdlPath = [fwDir stringByAppendingPathComponent:@"libSDL3.dylib"];
+    if (![fm fileExistsAtPath:sdlPath]) {
+        sdlPath = [fwDir stringByAppendingPathComponent:@"SDL3.framework/SDL3"];
+    }
+    if ([fm fileExistsAtPath:sdlPath]) {
+        l4d2::boot::Trace("[dlopen] Loading dynamic SDL3: " + std::string(sdlPath.UTF8String) + "...");
+        dlerror();
+        void* hSdl = dlopen(sdlPath.UTF8String, RTLD_NOW | RTLD_GLOBAL);
+        if (!hSdl) {
+            const char* err = dlerror();
+            showDlopenError(@"SDL3", err);
+            return;
+        }
+        l4d2::boot::Trace("[dlopen] SDL3 loaded successfully");
+    } else {
+        l4d2::boot::Trace("[dlopen] Dynamic SDL3 not present (SDL3 is statically linked into L4D2Game)");
+    }
+
+    // 3. Strict dependency preload: librexruntime.dylib
     l4d2::boot::Trace("[dlopen] Loading librexruntime.dylib...");
+    dlerror();
     void* hRuntime = dlopen("@executable_path/Frameworks/librexruntime.dylib", RTLD_NOW | RTLD_GLOBAL);
     if (!hRuntime) {
-        showDlopenError(@"librexruntime.dylib", dlerror());
+        const char* err = dlerror();
+        showDlopenError(@"librexruntime.dylib", err);
         return;
     }
     l4d2::boot::Trace("[dlopen] librexruntime.dylib loaded successfully");
 
-    // 2. Load librexgpu-xenos.dylib (loads MoltenVK.framework dynamically)
+    // 4. Strict dependency preload: librexgpu-xenos.dylib
     l4d2::boot::Trace("[dlopen] Loading librexgpu-xenos.dylib...");
+    dlerror();
     void* hGpu = dlopen("@executable_path/Frameworks/librexgpu-xenos.dylib", RTLD_NOW | RTLD_GLOBAL);
     if (!hGpu) {
-        showDlopenError(@"librexgpu-xenos.dylib", dlerror());
+        const char* err = dlerror();
+        showDlopenError(@"librexgpu-xenos.dylib", err);
         return;
     }
     l4d2::boot::Trace("[dlopen] librexgpu-xenos.dylib loaded successfully");
 
-    // 3. Load L4D2Game.framework
+    // 5. Strict dependency preload: L4D2Game.framework/L4D2Game (ZERO dlerror clobbering!)
     l4d2::boot::Trace("[dlopen] Loading L4D2Game.framework/L4D2Game...");
+    dlerror();
     void* hGame = dlopen("@executable_path/Frameworks/L4D2Game.framework/L4D2Game", RTLD_NOW | RTLD_GLOBAL);
     if (!hGame) {
-        hGame = dlopen("@executable_path/Frameworks/libL4D2Game.dylib", RTLD_NOW | RTLD_GLOBAL);
-    }
-    if (!hGame) {
-        showDlopenError(@"L4D2Game.framework", dlerror());
+        const char* err = dlerror();
+        showDlopenError(@"L4D2Game.framework/L4D2Game", err);
         return;
     }
-    l4d2::boot::Trace("[dlopen] L4D2Game loaded successfully");
+    l4d2::boot::Trace("[dlopen] L4D2Game.framework/L4D2Game loaded successfully");
 
-    // 4. Resolve L4D2_StartGame entry point
+    // 6. Resolve L4D2_StartGame entry point
     typedef int (*L4D2_StartGameFn)(int, char**);
+    dlerror();
     L4D2_StartGameFn startGameFn = (L4D2_StartGameFn)dlsym(hGame, "L4D2_StartGame");
+    const char* dlsymErr = dlerror();
+    if (!startGameFn || dlsymErr) {
+        showDlopenError(@"L4D2Game symbol L4D2_StartGame", dlsymErr ? dlsymErr : "dlsym returned NULL");
+        return;
+    }
     char fnPtrBuf[128];
     snprintf(fnPtrBuf, sizeof(fnPtrBuf), "[dlopen] Resolved L4D2_StartGame at %p", (void*)startGameFn);
     l4d2::boot::Trace(fnPtrBuf);
 
-    if (!startGameFn) {
-        showDlopenError(@"L4D2Game symbol L4D2_StartGame", dlerror());
-        return;
-    }
-
-    // 5. Build arguments
+    // 7. Build arguments
     fs::path docs = l4d2::ios::DocumentsFolder();
     auto texts = l4d2::ios::GameArguments(docs, gameRoot);
 
@@ -282,41 +327,45 @@ static void EarlyBootTrace() {
     l4d2::ios::SetArgument(texts, "--ios_utility_qos=false");
     l4d2::ios::SetArgument(texts, "--ios_retina=true");
 
-    std::vector<char*> args;
-    args.reserve(texts.size() + 1);
-    for (auto& t : texts) {
-        args.push_back(t.data());
-    }
-    args.push_back(nullptr);
-    const int n = static_cast<int>(texts.size());
+    l4d2::boot::Trace("[Launcher] Scheduling L4D2_StartGame on main runloop turn...");
 
-    // 6. Tear down launcher UIWindow to allow SDL3 to acquire key window
-    [self.launcherVC.view endEditing:YES];
-    self.window.hidden = YES;
-    self.window.rootViewController = nil;
-    self.window = nil;
+    // 8. Dispatch launch on main queue, dismissing launcher window so SDL3 can own keyWindow
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.launcherVC.view endEditing:YES];
+        self.window.hidden = YES;
+        self.window.rootViewController = nil;
+        self.window = nil;
 
-    l4d2::boot::Trace("[dlopen] Calling L4D2_StartGame with arguments...");
-    int result = startGameFn(n, args.data());
-    l4d2::boot::Trace("[main] L4D2_StartGame exited with code " + std::to_string(result));
+        std::vector<char*> args;
+        args.reserve(texts.size() + 1);
+        for (auto& t : texts) {
+            args.push_back(const_cast<char*>(t.data()));
+        }
+        args.push_back(nullptr);
+        const int n = static_cast<int>(texts.size());
 
-    if (result != 0) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Game Terminated"
-                                                                           message:@"Left 4 Dead 2 exited with an error. Check Documents/boot.txt and Documents/l4d2.log for diagnostics."
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        l4d2::boot::Trace("[dlopen] Calling L4D2_StartGame with arguments...");
+        int result = startGameFn(n, args.data());
+        l4d2::boot::Trace("[main] L4D2_StartGame exited with code " + std::to_string(result));
 
-            // Restore launcher window
-            self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-            self.window.backgroundColor = [UIColor blackColor];
-            self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-            self.window.rootViewController = [[L4D2LauncherNavigation alloc] initWithRootViewController:self.launcherVC];
-            [self.window makeKeyAndVisible];
-            [self.launcherVC presentViewController:alert animated:YES completion:nil];
-            self.isLaunching = NO;
-        });
-    }
+        if (result != 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Game Terminated"
+                                                                               message:@"Left 4 Dead 2 exited with an error. Check Documents/boot.txt and Documents/l4d2.log for diagnostics."
+                                                                        preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+
+                // Restore launcher window
+                self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+                self.window.backgroundColor = [UIColor blackColor];
+                self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+                self.window.rootViewController = [[L4D2LauncherNavigation alloc] initWithRootViewController:self.launcherVC];
+                [self.window makeKeyAndVisible];
+                [self.launcherVC presentViewController:alert animated:YES completion:nil];
+                self.isLaunching = NO;
+            });
+        }
+    });
 }
 
 @end

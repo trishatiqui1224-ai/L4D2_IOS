@@ -165,6 +165,7 @@ jobs:
           # 1. Verify UNIX -rwxr-xr-x (755) permissions inside the ZIP!
           echo "[CI] Verifying UNIX permissions inside ZIP..."
           zipinfo -l L4D2-Recomp-iOS.ipa | grep "Payload/L4D2Recomp.app/L4D2Recomp$" | grep "^-rwxr-xr-x"
+          zipinfo -l L4D2-Recomp-iOS.ipa | grep "Frameworks/L4D2Game.framework/L4D2Game$" | grep "^-rwxr-xr-x"
 
           # 2. Verify main launcher binary has ZERO @rpath / custom dylib load-time dependencies!
           echo "[CI] Verifying pure minimal UIKit launcher (ZERO custom @rpath load-time dependencies)..."
@@ -174,11 +175,26 @@ jobs:
             exit 1
           fi
 
-          # 3. Verify compiled guest functions in L4D2Game framework
+          # 3. Verify L4D2Game framework exists, dependencies exist in Frameworks/, and CFBundleIcons is in Info.plist
           GAME_BIN="/tmp/ipa_inspect/Payload/L4D2Recomp.app/Frameworks/L4D2Game.framework/L4D2Game"
-          if [ ! -f "$GAME_BIN" ]; then
-            GAME_BIN="/tmp/ipa_inspect/Payload/L4D2Recomp.app/Frameworks/libL4D2Game.dylib"
-          fi
+          test -f "$GAME_BIN" || { echo "ERROR: Missing L4D2Game binary in framework!"; exit 1; }
+
+          echo "[CI] Verifying all @rpath dependencies required by L4D2Game exist in bundle..."
+          for dep in $(otool -L "$GAME_BIN" | awk '/@rpath\//{print $1}' | sed 's|@rpath/||'); do
+            echo "Verifying @rpath dependency exists: Frameworks/$dep"
+            test -f "/tmp/ipa_inspect/Payload/L4D2Recomp.app/Frameworks/$dep" || {
+              echo "ERROR: Missing @rpath dependency Frameworks/$dep required by L4D2Game!"
+              exit 1
+            }
+          done
+
+          echo "[CI] Verifying CFBundleIcons in Info.plist..."
+          grep -q "CFBundleIcons" /tmp/ipa_inspect/Payload/L4D2Recomp.app/Info.plist || {
+            echo "ERROR: Missing CFBundleIcons in Info.plist!"
+            exit 1
+          }
+
+          # 4. Verify compiled guest functions in L4D2Game framework
           FUNC_COUNT=$(nm -gU "$GAME_BIN" | grep -c "sub_8" || true)
           echo "Compiled guest function symbols in L4D2Game: $FUNC_COUNT"
           if [ "$FUNC_COUNT" -lt 10000 ]; then

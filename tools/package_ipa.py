@@ -189,23 +189,70 @@ def package_ipa(app_dir: pathlib.Path, output_ipa: pathlib.Path):
             try:
                 cmd = (
                     f"xcrun actool --output-format human-readable-text --notices --warnings "
-                    f"--export-dependency-info {temp_payload}/assetcatalog_dependencies "
-                    f"--output-partial-info-plist {temp_payload}/assetcatalog_generated_info.plist "
+                    f"--export-dependency-info '{temp_payload}/assetcatalog_dependencies' "
+                    f"--output-partial-info-plist '{temp_payload}/assetcatalog_generated_info.plist' "
                     f"--app-icon AppIcon --compress-pngs --enable-on-demand-resources NO "
                     f"--target-device iphone --target-device ipad --minimum-deployment-target 16.0 "
                     f"--platform iphoneos --compile '{dest_app}' '{xcassets}'"
                 )
                 print(f"[package_ipa] Compiling asset catalog with actool...")
                 subprocess.run(cmd, shell=True, check=False)
+
+                # Merge actool partial plist (CFBundleIcons) into destination Info.plist
+                partial_plist = temp_payload / "assetcatalog_generated_info.plist"
+                if partial_plist.exists() and dest_plist.exists():
+                    try:
+                        with open(partial_plist, "rb") as fp:
+                            part_pl = plistlib.load(fp)
+                        with open(dest_plist, "rb") as fp:
+                            main_pl = plistlib.load(fp)
+                        for k, v in part_pl.items():
+                            main_pl[k] = v
+                        with open(dest_plist, "wb") as fp:
+                            plistlib.dump(main_pl, fp)
+                        print("[package_ipa] Merged assetcatalog_generated_info.plist (CFBundleIcons) into Info.plist")
+                    except Exception as e:
+                        print(f"[package_ipa] Warning merging asset catalog plist: {e}")
             except Exception as e:
                 print(f"[package_ipa] Notice: actool compile skipped: {e}")
 
-        # Also copy raw AppIcon PNGs into the bundle root for sideloaders
+        # Ensure CFBundleIcons exists in Info.plist even if actool was unavailable
+        if dest_plist.exists():
+            try:
+                with open(dest_plist, "rb") as fp:
+                    main_pl = plistlib.load(fp)
+                if "CFBundleIcons" not in main_pl:
+                    main_pl["CFBundleIcons"] = {
+                        "CFBundlePrimaryIcon": {
+                            "CFBundleIconFiles": ["AppIcon60x60"],
+                            "CFBundleIconName": "AppIcon"
+                        }
+                    }
+                if "CFBundleIcons~ipad" not in main_pl:
+                    main_pl["CFBundleIcons~ipad"] = {
+                        "CFBundlePrimaryIcon": {
+                            "CFBundleIconFiles": ["AppIcon60x60", "AppIcon76x76"],
+                            "CFBundleIconName": "AppIcon"
+                        }
+                    }
+                with open(dest_plist, "wb") as fp:
+                    plistlib.dump(main_pl, fp)
+            except Exception as e:
+                print(f"[package_ipa] Notice setting default CFBundleIcons: {e}")
+
+        # Copy raw AppIcon PNGs into the bundle root for SpringBoard / sideloaders
         appicon_dir = xcassets / "AppIcon.appiconset"
         if appicon_dir.exists():
             for icon_file in appicon_dir.glob("*.png"):
                 shutil.copy2(icon_file, dest_app / icon_file.name)
             print(f"[package_ipa] Copied raw AppIcon PNGs to {dest_app.name}/")
+
+        # Copy standard named icons from resources/
+        res_dir = ROOT / "ios" / "resources"
+        for name in ["AppIcon60x60@2x.png", "AppIcon60x60@3x.png", "AppIcon76x76@2x~ipad.png"]:
+            src_f = res_dir / name
+            if src_f.exists():
+                shutil.copy2(src_f, dest_app / name)
 
     # 3. Ensure Frameworks are fully populated with dereferenced binaries
     fw_dir = dest_app / "Frameworks"

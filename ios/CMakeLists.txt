@@ -312,7 +312,7 @@ set_target_properties(L4D2Game PROPERTIES
 )
 
 target_link_options(L4D2Game PRIVATE
-    "-Wl,-undefined,dynamic_lookup"
+    "-Wl,-undefined,error"
 )
 
 target_compile_options(L4D2Game PRIVATE
@@ -357,14 +357,17 @@ target_link_libraries(L4D2Game PRIVATE
     l4d2_headers
     ${FORCE_LOAD_FLAGS}
     ${RECOMP_LIBS}
+    "${L4D2_MOLTENVK_FW}/MoltenVK"
     "-framework UIKit"
     "-framework Foundation"
     "-framework Metal"
+    "-framework QuartzCore"
+    "-framework CoreGraphics"
+    "-framework AVFAudio"
     "-framework AudioToolbox"
-    "-framework AVFoundation"
     "-framework GameController"
     "-framework CoreHaptics"
-    "-framework QuartzCore"
+    "-framework CoreMotion"
     "-framework UniformTypeIdentifiers"
     z
 )
@@ -375,12 +378,18 @@ elseif(TARGET rexruntime)
     target_link_libraries(L4D2Game PRIVATE rexruntime)
 endif()
 
-if(TARGET imgui)
-    target_link_libraries(L4D2Game PRIVATE imgui)
+if(TARGET rexgpu-xenos)
+    target_link_libraries(L4D2Game PRIVATE rexgpu-xenos)
 endif()
 
-if(TARGET rexgpu-xenos)
-    add_dependencies(L4D2Game rexgpu-xenos)
+if(TARGET SDL3-static)
+    target_link_libraries(L4D2Game PRIVATE SDL3-static)
+elseif(TARGET SDL3::SDL3-static)
+    target_link_libraries(L4D2Game PRIVATE SDL3::SDL3-static)
+endif()
+
+if(TARGET imgui)
+    target_link_libraries(L4D2Game PRIVATE imgui)
 endif()
 
 # App Bundle Properties
