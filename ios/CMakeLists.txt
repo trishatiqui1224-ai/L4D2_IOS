@@ -385,12 +385,6 @@ if(TARGET rexgpu-xenos)
     target_link_libraries(L4D2Game PRIVATE rexgpu-xenos)
 endif()
 
-if(TARGET SDL3-static)
-    target_link_libraries(L4D2Game PRIVATE SDL3-static)
-elseif(TARGET SDL3::SDL3-static)
-    target_link_libraries(L4D2Game PRIVATE SDL3::SDL3-static)
-endif()
-
 if(TARGET imgui)
     target_link_libraries(L4D2Game PRIVATE imgui)
 endif()

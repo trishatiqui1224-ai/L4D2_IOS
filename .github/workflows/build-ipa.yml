@@ -194,7 +194,17 @@ jobs:
             exit 1
           }
 
-          # 4. Verify compiled guest functions in L4D2Game framework
+          # 4. Verify _OBJC_CLASS_$_SDLUIKitDelegate exists in EXACTLY 1 binary in the entire bundle (owned by librexruntime.dylib)
+          echo "[CI] Auditing _OBJC_CLASS_\$_SDLUIKitDelegate definition across app bundle..."
+          DELEGATE_MATCHES=$(find /tmp/ipa_inspect/Payload/L4D2Recomp.app -type f -exec nm -gU {} 2>/dev/null \; | grep -c "_OBJC_CLASS_\$_SDLUIKitDelegate" || true)
+          echo "SDLUIKitDelegate symbol definitions found: $DELEGATE_MATCHES"
+          if [ "$DELEGATE_MATCHES" -ne 1 ]; then
+            echo "FATAL: Expected exactly 1 _OBJC_CLASS_\$_SDLUIKitDelegate in the entire bundle (in librexruntime.dylib), found $DELEGATE_MATCHES!"
+            exit 1
+          fi
+          echo "[CI] Verified: Exactly 1 SDLUIKitDelegate exists in the process (owned by librexruntime.dylib)."
+
+          # 5. Verify compiled guest functions in L4D2Game framework
           FUNC_COUNT=$(nm -gU "$GAME_BIN" | grep -c "sub_8" || true)
           echo "Compiled guest function symbols in L4D2Game: $FUNC_COUNT"
           if [ "$FUNC_COUNT" -lt 10000 ]; then

@@ -1,4 +1,5 @@
 #import <UIKit/UIKit.h>
+#import <AVFAudio/AVFAudio.h>
 #import <dlfcn.h>
 #import <fcntl.h>
 #import <unistd.h>
@@ -7,6 +8,7 @@
 #import <vector>
 #import <string>
 #import <sstream>
+#import <fstream>
 #import <algorithm>
 #import <filesystem>
 
@@ -156,168 +158,205 @@ static void EarlyBootTrace() {
 }
 
 // ============================================================================
-// STAGE 1: Pure Minimal UIKit Launcher (Zero Custom LC_LOAD_DYLIB Dependencies)
+// STAGE 1: Native Inset-Grouped Launcher inside SDL_RunApp (SDLUIKitDelegate)
 // ============================================================================
-@interface L4D2AppDelegate : UIResponder <UIApplicationDelegate>
-@property (strong, nonatomic) UIWindow *window;
-@property (strong, nonatomic) L4D2LauncherController *launcherVC;
-@property (assign, nonatomic) BOOL isLaunching;
-- (void)startGameWithRoot:(fs::path)gameRoot settings:(NSDictionary*)settings;
-@end
 
-@implementation L4D2AppDelegate
+static bool g_launch_requested = false;
+static fs::path g_selected_game_root;
+static NSDictionary* g_selected_settings = nil;
 
-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    l4d2::boot::Trace("[AppDelegate] didFinishLaunchingWithOptions entered");
+static std::string ReadLastErrorFromLog(const fs::path& logPath) {
+    std::ifstream file(logPath);
+    if (!file.is_open()) return "";
+    std::string line;
+    std::vector<std::string> lines;
+    while (std::getline(file, line)) {
+        if (!line.empty()) {
+            lines.push_back(line);
+        }
+    }
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+        if (it->find("[error]") != std::string::npos ||
+            it->find("[critical]") != std::string::npos ||
+            it->find("[fatal]") != std::string::npos ||
+            it->find("FAILED") != std::string::npos) {
+            return *it;
+        }
+    }
+    if (!lines.empty()) return lines.back();
+    return "";
+}
 
-    fs::path docs = l4d2::ios::DocumentsFolder();
+static void ShowErrorAlert(NSString* title, NSString* message) {
+    l4d2::boot::Trace([NSString stringWithFormat:@"[ALERT] %@: %@", title, message].UTF8String);
+    __block bool dismissed = false;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController* alert = [UIAlertController alertControllerWithTitle:title
+                                                                       message:message
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
+            dismissed = true;
+        }]];
+
+        UIWindow* alertWin = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+        alertWin.backgroundColor = [UIColor blackColor];
+        alertWin.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+        alertWin.rootViewController = [[UIViewController alloc] init];
+        alertWin.windowLevel = UIWindowLevelAlert + 1;
+        [alertWin makeKeyAndVisible];
+        [alertWin.rootViewController presentViewController:alert animated:YES completion:nil];
+    });
+
+    while (!dismissed) {
+        @autoreleasepool {
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.016, true);
+        }
+    }
+}
+
+static int L4D2_SDLMain(int argc, char* argv[]) {
+    l4d2::boot::Trace("[SDLMain] L4D2_SDLMain entered (SDLUIKitDelegate active)");
+
+    const fs::path docs = l4d2::ios::DocumentsFolder();
     fs::path logPath = docs / "l4d2.log";
     l4d2::log::Logger::Instance().Init(logPath.string());
     l4d2::boot::SetLogFilePath(logPath.string());
     L4D2_LOG_INFO("iOS", "L4D2 Recomp iOS Pure Launcher Booting... (Build %s %s)", __DATE__, __TIME__);
 
-    // 1. Create full screen dark mode window
-    self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    self.window.backgroundColor = [UIColor blackColor];
-    self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    // 1. Create temporary UIWindow for the launcher on top of SDL launch screen
+    UIWindowScene* scene = nil;
+    for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+        if ([s isKindOfClass:UIWindowScene.class] && ((UIWindowScene*)s).screen == UIScreen.mainScreen) {
+            scene = (UIWindowScene*)s;
+            break;
+        }
+    }
+    UIWindow* launcherWindow = scene ? [[UIWindow alloc] initWithWindowScene:scene]
+                                     : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    launcherWindow.backgroundColor = [UIColor blackColor];
+    launcherWindow.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
+    launcherWindow.windowLevel = UIWindowLevelNormal + 1; // over SDL's launch screen
 
-    // 2. Instantiate interactive Left 4 Dead 2 Launcher with NFSCarbon styling
-    __weak L4D2AppDelegate* weakSelf = self;
-    self.launcherVC = [[L4D2LauncherController alloc] initWithDocuments:docs done:^(fs::path gameRoot, NSDictionary* settings) {
-        [weakSelf startGameWithRoot:gameRoot settings:settings];
+    g_launch_requested = false;
+    g_selected_game_root.clear();
+    g_selected_settings = nil;
+
+    L4D2LauncherController* rootVC = [[L4D2LauncherController alloc] initWithDocuments:docs
+                                                                                  done:^(fs::path gameRoot, NSDictionary* settings) {
+        g_selected_game_root = gameRoot;
+        g_selected_settings = settings;
+        g_launch_requested = true;
     }];
 
-    L4D2LauncherNavigation* nav = [[L4D2LauncherNavigation alloc] initWithRootViewController:self.launcherVC];
+    L4D2LauncherNavigation* nav = [[L4D2LauncherNavigation alloc] initWithRootViewController:rootVC];
     nav.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
 
-    self.window.rootViewController = nav;
-    [self.window makeKeyAndVisible];
+    launcherWindow.rootViewController = nav;
+    [launcherWindow makeKeyAndVisible];
+    l4d2::boot::Trace("launcher: on screen");
 
-    l4d2::boot::Trace("[AppDelegate] Native Inset-Grouped Launcher UI presented on window");
-    return YES;
-}
-
-// ============================================================================
-// STAGE 2: Dynamic dlopen Loading of ReXGlue & L4D2Game Framework on Play
-// ============================================================================
-- (void)startGameWithRoot:(fs::path)gameRoot settings:(NSDictionary*)settings {
-    if (self.isLaunching) {
-        l4d2::boot::Trace("[Launcher] Guarded against double-tap re-entry");
-        return;
-    }
-    self.isLaunching = YES;
-
-    l4d2::boot::Trace("[Launcher] Play tapped! Preparing dynamic Stage-2 load...");
-    l4d2::boot::Trace("[Launcher] Game Root: " + gameRoot.string());
-
-    auto showDlopenError = ^(NSString* libName, const char* err) {
-        std::string savedErr = err ? err : "Unknown dynamic linker error";
-        NSString* fullMsg = [NSString stringWithFormat:@"Failed to load %@:\n%s", libName, savedErr.c_str()];
-        l4d2::boot::Trace("[FATAL] " + std::string(fullMsg.UTF8String));
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Launch Error"
-                                                                           message:fullMsg
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-            [self.launcherVC presentViewController:alert animated:YES completion:nil];
-            self.isLaunching = NO;
-        });
-    };
-
-    // Inspect Frameworks directory contents for diagnostic tracing
-    NSString* fwDir = [[NSBundle mainBundle] privateFrameworksPath];
-    NSFileManager* fm = [NSFileManager defaultManager];
-    NSArray* fwContents = [fm contentsOfDirectoryAtPath:fwDir error:nil];
-    l4d2::boot::Trace("[dlopen] Inspecting Frameworks directory: " + std::string(fwDir ? fwDir.UTF8String : "(null)"));
-    if (fwContents) {
-        for (NSString* item in fwContents) {
-            l4d2::boot::Trace("  - " + std::string(item.UTF8String));
+    // 2. Pump runloop while waiting for user to configure settings and tap Play
+    while (!g_launch_requested) {
+        @autoreleasepool {
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.016, true);
         }
     }
 
-    // 1. Strict dependency preload: MoltenVK.framework/MoltenVK
-    l4d2::boot::Trace("[dlopen] Loading MoltenVK.framework/MoltenVK...");
-    dlerror();
-    void* hMvk = dlopen("@executable_path/Frameworks/MoltenVK.framework/MoltenVK", RTLD_NOW | RTLD_GLOBAL);
-    if (!hMvk) {
-        const char* err = dlerror();
-        showDlopenError(@"MoltenVK.framework/MoltenVK", err);
-        return;
-    }
-    l4d2::boot::Trace("[dlopen] MoltenVK.framework/MoltenVK loaded successfully");
+    l4d2::boot::Trace("launcher: Play");
 
-    // 2. Strict dependency preload: SDL3 (if dynamic dylib / framework present)
-    NSString* sdlPath = [fwDir stringByAppendingPathComponent:@"libSDL3.dylib"];
-    if (![fm fileExistsAtPath:sdlPath]) {
-        sdlPath = [fwDir stringByAppendingPathComponent:@"SDL3.framework/SDL3"];
-    }
-    if ([fm fileExistsAtPath:sdlPath]) {
-        l4d2::boot::Trace("[dlopen] Loading dynamic SDL3: " + std::string(sdlPath.UTF8String) + "...");
-        dlerror();
-        void* hSdl = dlopen(sdlPath.UTF8String, RTLD_NOW | RTLD_GLOBAL);
-        if (!hSdl) {
-            const char* err = dlerror();
-            showDlopenError(@"SDL3", err);
-            return;
+    // 3. Dismiss launcher window cleanly
+    [rootVC.view endEditing:YES];
+    launcherWindow.hidden = YES;
+    launcherWindow.rootViewController = nil;
+    launcherWindow = nil;
+
+    for (UIScene* s in UIApplication.sharedApplication.connectedScenes) {
+        if (![s isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow* w in ((UIWindowScene*)s).windows) {
+            if ([w.rootViewController isKindOfClass:L4D2LauncherNavigation.class]) {
+                w.hidden = YES;
+                w.rootViewController = nil;
+            } else if ([NSStringFromClass(w.rootViewController.class) hasPrefix:@"SDL"]) {
+                [w makeKeyAndVisible];
+            }
         }
-        l4d2::boot::Trace("[dlopen] SDL3 loaded successfully");
-    } else {
-        l4d2::boot::Trace("[dlopen] Dynamic SDL3 not present (SDL3 is statically linked into L4D2Game)");
     }
 
-    // 3. Strict dependency preload: librexruntime.dylib
-    l4d2::boot::Trace("[dlopen] Loading librexruntime.dylib...");
-    dlerror();
-    void* hRuntime = dlopen("@executable_path/Frameworks/librexruntime.dylib", RTLD_NOW | RTLD_GLOBAL);
-    if (!hRuntime) {
-        const char* err = dlerror();
-        showDlopenError(@"librexruntime.dylib", err);
-        return;
-    }
-    l4d2::boot::Trace("[dlopen] librexruntime.dylib loaded successfully");
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, false);
 
-    // 4. Strict dependency preload: librexgpu-xenos.dylib
+    if (scene) {
+        for (UIWindow* w in scene.windows) {
+            [w.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+        }
+        UIWindowSceneGeometryPreferencesIOS* prefs = [[UIWindowSceneGeometryPreferencesIOS alloc]
+            initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape];
+        [scene requestGeometryUpdateWithPreferences:prefs errorHandler:nil];
+    }
+
+    // 4. Activate AVAudioSession before game starts (5.3 ms preferred buffer)
+    l4d2::boot::Trace("audio: activating the session");
+    AVAudioSession* session = [AVAudioSession sharedInstance];
+    NSError* audioError = nil;
+    [session setCategory:AVAudioSessionCategoryPlayback
+                    mode:AVAudioSessionModeDefault
+                 options:AVAudioSessionCategoryOptionMixWithOthers
+                   error:&audioError];
+    [session setPreferredIOBufferDuration:0.0053 error:&audioError];
+    [session setActive:YES error:&audioError];
+    if (audioError) {
+        l4d2::boot::Trace(std::string("audio: session activation notice: ") + audioError.localizedDescription.UTF8String);
+    }
+
+    // 5. Preload librexgpu-xenos.dylib
     l4d2::boot::Trace("[dlopen] Loading librexgpu-xenos.dylib...");
     dlerror();
     void* hGpu = dlopen("@executable_path/Frameworks/librexgpu-xenos.dylib", RTLD_NOW | RTLD_GLOBAL);
     if (!hGpu) {
         const char* err = dlerror();
-        showDlopenError(@"librexgpu-xenos.dylib", err);
-        return;
+        std::string msg = std::string("Failed to load librexgpu-xenos.dylib:
+") + (err ? err : "unknown error");
+        l4d2::boot::Trace("[FATAL] " + msg);
+        ShowErrorAlert(@"Launch Error", [NSString stringWithUTF8String:msg.c_str()]);
+        return 1;
     }
     l4d2::boot::Trace("[dlopen] librexgpu-xenos.dylib loaded successfully");
 
-    // 5. Strict dependency preload: L4D2Game.framework/L4D2Game (ZERO dlerror clobbering!)
+    // 6. Preload L4D2Game.framework/L4D2Game
     l4d2::boot::Trace("[dlopen] Loading L4D2Game.framework/L4D2Game...");
     dlerror();
     void* hGame = dlopen("@executable_path/Frameworks/L4D2Game.framework/L4D2Game", RTLD_NOW | RTLD_GLOBAL);
     if (!hGame) {
         const char* err = dlerror();
-        showDlopenError(@"L4D2Game.framework/L4D2Game", err);
-        return;
+        std::string msg = std::string("Failed to load L4D2Game.framework/L4D2Game:
+") + (err ? err : "unknown error");
+        l4d2::boot::Trace("[FATAL] " + msg);
+        ShowErrorAlert(@"Launch Error", [NSString stringWithUTF8String:msg.c_str()]);
+        return 1;
     }
     l4d2::boot::Trace("[dlopen] L4D2Game.framework/L4D2Game loaded successfully");
 
-    // 6. Resolve L4D2_StartGame entry point
+    // 7. Resolve L4D2_StartGame entry point
     typedef int (*L4D2_StartGameFn)(int, char**);
     dlerror();
     L4D2_StartGameFn startGameFn = (L4D2_StartGameFn)dlsym(hGame, "L4D2_StartGame");
     const char* dlsymErr = dlerror();
     if (!startGameFn || dlsymErr) {
-        showDlopenError(@"L4D2Game symbol L4D2_StartGame", dlsymErr ? dlsymErr : "dlsym returned NULL");
-        return;
+        std::string msg = std::string("Failed to resolve L4D2_StartGame:
+") + (dlsymErr ? dlsymErr : "dlsym returned NULL");
+        l4d2::boot::Trace("[FATAL] " + msg);
+        ShowErrorAlert(@"Launch Error", [NSString stringWithUTF8String:msg.c_str()]);
+        return 1;
     }
     char fnPtrBuf[128];
     snprintf(fnPtrBuf, sizeof(fnPtrBuf), "[dlopen] Resolved L4D2_StartGame at %p", (void*)startGameFn);
     l4d2::boot::Trace(fnPtrBuf);
 
-    // 7. Build arguments
-    fs::path docs = l4d2::ios::DocumentsFolder();
-    auto texts = l4d2::ios::GameArguments(docs, gameRoot);
+    // 8. Build arguments
+    auto texts = l4d2::ios::GameArguments(docs, g_selected_game_root);
 
     for (const std::string& a : l4d2::launcher::SettingsArguments(docs)) {
         l4d2::ios::SetArgument(texts, a);
+        l4d2::boot::Trace("setting: " + a);
     }
     l4d2::ios::ApplyExtraArguments(docs / "extra_args.txt", texts);
 
@@ -327,51 +366,39 @@ static void EarlyBootTrace() {
     l4d2::ios::SetArgument(texts, "--ios_utility_qos=false");
     l4d2::ios::SetArgument(texts, "--ios_retina=true");
 
-    l4d2::boot::Trace("[Launcher] Scheduling L4D2_StartGame on main runloop turn...");
+    std::vector<char*> game_argv;
+    game_argv.reserve(texts.size() + 1);
+    for (auto& t : texts) {
+        game_argv.push_back(t.data());
+    }
+    game_argv.push_back(nullptr);
+    const int game_argc = static_cast<int>(texts.size());
 
-    // 8. Dispatch launch on main queue, dismissing launcher window so SDL3 can own keyWindow
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.launcherVC.view endEditing:YES];
-        self.window.hidden = YES;
-        self.window.rootViewController = nil;
-        self.window = nil;
+    l4d2::boot::Trace("[main] Calling L4D2_StartGame synchronously inside L4D2_SDLMain...");
+    for (int i = 0; i < game_argc; ++i) {
+        l4d2::boot::Trace(std::string("arg: ") + game_argv[i]);
+    }
 
-        std::vector<char*> args;
-        args.reserve(texts.size() + 1);
-        for (auto& t : texts) {
-            args.push_back(const_cast<char*>(t.data()));
-        }
-        args.push_back(nullptr);
-        const int n = static_cast<int>(texts.size());
+    int result = startGameFn(game_argc, game_argv.data());
+    l4d2::boot::Trace("[main] L4D2_StartGame exited with code " + std::to_string(result));
 
-        l4d2::boot::Trace("[dlopen] Calling L4D2_StartGame with arguments...");
-        int result = startGameFn(n, args.data());
-        l4d2::boot::Trace("[main] L4D2_StartGame exited with code " + std::to_string(result));
+    if (result != 0) {
+        std::string lastErr = ReadLastErrorFromLog(docs / "l4d2.log");
+        NSString* detail = lastErr.empty()
+            ? @"Check Documents/boot.txt and Documents/l4d2.log for diagnostics."
+            : [NSString stringWithFormat:@"%s
 
-        if (result != 0) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Game Terminated"
-                                                                               message:@"Left 4 Dead 2 exited with an error. Check Documents/boot.txt and Documents/l4d2.log for diagnostics."
-                                                                        preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+Check Documents/boot.txt and Documents/l4d2.log for full diagnostics.", lastErr.c_str()];
+        NSString* msg = [NSString stringWithFormat:@"Left 4 Dead 2 exited with code %d.
 
-                // Restore launcher window
-                self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-                self.window.backgroundColor = [UIColor blackColor];
-                self.window.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-                self.window.rootViewController = [[L4D2LauncherNavigation alloc] initWithRootViewController:self.launcherVC];
-                [self.window makeKeyAndVisible];
-                [self.launcherVC presentViewController:alert animated:YES completion:nil];
-                self.isLaunching = NO;
-            });
-        }
-    });
+%@", result, detail];
+        ShowErrorAlert(@"Left 4 Dead 2 Exited", msg);
+    }
+    return result;
 }
 
-@end
-
 // ============================================================================
-// Genuine iOS main() Entrypoint (NEVER Hijacked by SDL_main)
+// Genuine iOS main() Entrypoint -> SDL_RunApp (librexruntime.dylib)
 // ============================================================================
 int main(int argc, char* argv[]) {
     // 1. Immediate Line 1 POSIX boot trace + fsync
@@ -389,7 +416,7 @@ int main(int argc, char* argv[]) {
         int fd = open(bootPath, O_CREAT | O_WRONLY | O_APPEND, 0644);
         if (fd >= 0) {
             char msg[256];
-            int len = snprintf(msg, sizeof(msg), "---- main_entered (Line 1), build %s %s, argc=%d\n", __DATE__, __TIME__, argc);
+            int len = snprintf(msg, sizeof(msg), "---- start, build %s %s, argc=%d\n", __DATE__, __TIME__, argc);
             write(fd, msg, len);
             fsync(fd);
             close(fd);
@@ -419,6 +446,7 @@ int main(int argc, char* argv[]) {
         fs::create_directories(docs / "config", ec);
         fs::create_directories(docs / "rex_data", ec);
         fs::create_directories(caches, ec);
+        fs::create_directories(caches / "rexglue", ec);
         fs::create_directories(app_support, ec);
         fs::create_directories(tmp, ec);
 
@@ -441,8 +469,45 @@ int main(int argc, char* argv[]) {
         l4d2::boot::Trace("Caches: " + caches.string());
         l4d2::boot::Trace("XDG_DATA_HOME: " + (docs / "rex_data").string());
 
-        // 7. Start UIApplicationMain on main thread
-        l4d2::boot::Trace("[main] Calling UIApplicationMain...");
-        return UIApplicationMain(argc, argv, nil, NSStringFromClass([L4D2AppDelegate class]));
+        // 7. Preload MoltenVK.framework/MoltenVK
+        l4d2::boot::Trace("[dlopen] Preloading MoltenVK.framework/MoltenVK...");
+        dlerror();
+        void* hMvk = dlopen("@executable_path/Frameworks/MoltenVK.framework/MoltenVK", RTLD_NOW | RTLD_GLOBAL);
+        if (!hMvk) {
+            const char* err = dlerror();
+            l4d2::boot::Trace(std::string("[FATAL] MoltenVK load failed: ") + (err ? err : "unknown error"));
+            return 1;
+        }
+        l4d2::boot::Trace("[dlopen] MoltenVK.framework/MoltenVK loaded successfully");
+
+        // 8. Preload librexruntime.dylib
+        l4d2::boot::Trace("[dlopen] Preloading librexruntime.dylib...");
+        dlerror();
+        void* hRuntime = dlopen("@executable_path/Frameworks/librexruntime.dylib", RTLD_NOW | RTLD_GLOBAL);
+        if (!hRuntime) {
+            const char* err = dlerror();
+            l4d2::boot::Trace(std::string("[FATAL] librexruntime load failed: ") + (err ? err : "unknown error"));
+            return 1;
+        }
+        l4d2::boot::Trace("[dlopen] librexruntime.dylib loaded successfully");
+
+        // 9. Resolve SDL_RunApp from librexruntime.dylib and run
+        typedef int (*SDL_main_func)(int argc, char *argv[]);
+        typedef int (*SDL_RunAppFn)(int argc, char *argv[], SDL_main_func mainFunction, void *reserved);
+        SDL_RunAppFn sdlRunApp = (SDL_RunAppFn)dlsym(hRuntime, "SDL_RunApp");
+        if (!sdlRunApp) {
+            sdlRunApp = (SDL_RunAppFn)dlsym(RTLD_DEFAULT, "SDL_RunApp");
+        }
+        if (!sdlRunApp) {
+            const char* err = dlerror();
+            l4d2::boot::Trace(std::string("[FATAL] Failed to resolve SDL_RunApp: ") + (err ? err : "dlsym returned NULL"));
+            return 1;
+        }
+
+        char ptrBuf[128];
+        snprintf(ptrBuf, sizeof(ptrBuf), "[main] Resolved SDL_RunApp at %p, launching SDL_RunApp...", (void*)sdlRunApp);
+        l4d2::boot::Trace(ptrBuf);
+
+        return sdlRunApp(argc, argv, L4D2_SDLMain, nullptr);
     }
 }
