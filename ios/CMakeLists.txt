@@ -91,6 +91,8 @@ target_include_directories(l4d2_headers INTERFACE
     "${L4D2_SDK}/include"
     "${L4D2_SDK}/src"
     "${L4D2_SDK}/thirdparty"
+    "${L4D2_SDK}/thirdparty/imgui"
+    "${L4D2_SDK}/thirdparty/imgui/include"
     "${L4D2_SDK}/thirdparty/fmt/include"
     "${L4D2_SDK}/thirdparty/spdlog/include"
     "${L4D2_SDK}/thirdparty/xxHash"
@@ -100,6 +102,11 @@ target_include_directories(l4d2_headers INTERFACE
     "${L4D2_SDK}/thirdparty/tomlplusplus/include"
     "${L4D2_SDK}/thirdparty/utfcpp/source"
 )
+
+if(TARGET imgui)
+    target_include_directories(l4d2_headers INTERFACE
+        $<TARGET_PROPERTY:imgui,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
 
 if(TARGET fmt::fmt)
     target_link_libraries(l4d2_headers INTERFACE fmt::fmt)
@@ -316,6 +323,9 @@ target_include_directories(L4D2Game PRIVATE
     "${L4D2_GEN_DIR}"
     "${L4D2_SDK}/include"
     "${L4D2_SDK}/src"
+    "${L4D2_SDK}/thirdparty"
+    "${L4D2_SDK}/thirdparty/imgui"
+    "${L4D2_SDK}/thirdparty/imgui/include"
     "${L4D2_SDK}/thirdparty/fmt/include"
     "${L4D2_SDK}/thirdparty/spdlog/include"
     "${L4D2_SDK}/thirdparty/xxHash"
@@ -325,6 +335,11 @@ target_include_directories(L4D2Game PRIVATE
     "${L4D2_SDK}/thirdparty/tomlplusplus/include"
     "${L4D2_SDK}/thirdparty/utfcpp/source"
 )
+
+if(TARGET imgui)
+    target_include_directories(L4D2Game PRIVATE
+        $<TARGET_PROPERTY:imgui,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
 
 target_compile_definitions(L4D2Game PRIVATE
     REX_PLATFORM_IOS=1
@@ -353,6 +368,10 @@ if(TARGET rex::runtime)
     target_link_libraries(L4D2Game PRIVATE rex::runtime)
 elseif(TARGET rexruntime)
     target_link_libraries(L4D2Game PRIVATE rexruntime)
+endif()
+
+if(TARGET imgui)
+    target_link_libraries(L4D2Game PRIVATE imgui)
 endif()
 
 if(TARGET rexgpu-xenos)
