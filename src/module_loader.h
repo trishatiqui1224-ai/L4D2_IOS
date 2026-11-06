@@ -7,6 +7,8 @@
 #include <vector>
 #include "l4d2_modules.h"
 
+namespace rex::system { class KernelState; }
+
 namespace l4d2 {
 
 // Xbox NT Status Codes
@@ -31,6 +33,9 @@ struct LoadedModule {
 class ModuleLoader {
 public:
     static ModuleLoader& Instance();
+
+    // Called from PPCImageInfo::register_modules before the entrypoint XEX is launched.
+    static void RegisterRecompiledModules(rex::system::KernelState* kernel_state);
 
     void Init(const std::string& game_root, const std::string& save_root);
     void Shutdown();

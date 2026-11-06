@@ -48,6 +48,7 @@ IOS_PATCHES = [
     "patch_ios_signal_forwarding",
     "patch_ios_cmake",
     "patch_ios_paths",
+    "patch_ios_relative_paths",
     "patch_ios_memory",
     "patch_ios_waits",
     "patch_ios_pause",

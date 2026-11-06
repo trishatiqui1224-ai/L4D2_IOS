@@ -153,7 +153,7 @@ elseif(TARGET rexruntime)
 endif()
 
 # =============================================================================
-# 2. Build All 19 Static Recompilation Module Libraries
+# 2. Build All 22 Static Recompilation Module Libraries
 # =============================================================================
 set(L4D2_MODULE_SPECS
     "default:default:default"
@@ -174,6 +174,9 @@ set(L4D2_MODULE_SPECS
     "filesystem_stdio_360:FileSystem_Stdio_360:filesystem"
     "vstdlib_360:vstdlib_360:vstdlib"
     "tier0_360:tier0_360:tier0"
+    "launcher_360:launcher_360:launcher"
+    "gameui_360:GameUI_360:gameui"
+    "vscript_360:vscript_360:vscript"
     "matchmaking_360:matchmaking_360:matchmaking"
 )
 

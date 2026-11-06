@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-tools/generate_code.py
-Restores pre-generated C++ static recompilation sources from gen.tar.gz
-or runs AOT codegen if retail disc is available.
-"""
+"""Restore the checked-in cache of generated C++ recompilation sources."""
 
 import argparse
 import os
@@ -14,6 +10,16 @@ import tarfile
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 GEN_DIR = ROOT / "generated"
 TAR_FILE = ROOT / "gen.tar.gz"
+
+MODULES = (
+    "default", "engine_360", "client_360", "server_360",
+    "MaterialSystem_360", "shaderapidx9_360", "stdshader_dx9_360",
+    "StudioRender_360", "vphysics_360", "SoundEmitterSystem_360",
+    "datacache_360", "SceneFileCache_360", "vgui2_360",
+    "vguimatsurface_360", "inputsystem_360", "FileSystem_Stdio_360",
+    "vstdlib_360", "tier0_360", "launcher_360", "GameUI_360",
+    "vscript_360", "matchmaking_360",
+)
 
 def unpack_cache():
     if not TAR_FILE.exists():
@@ -27,15 +33,13 @@ def unpack_cache():
         else:
             tar.extractall(ROOT)
             
-    # Verify core modules exist
-    check_mods = ["default", "engine_360", "client_360", "server_360"]
-    for m in check_mods:
+    for m in MODULES:
         p = GEN_DIR / m / "sources.cmake"
         if not p.exists():
             print(f"[ERROR] Expected module source list missing: {p}")
             return False
             
-    print(f"[generate_code] Successfully restored all 19 recompiled Source Engine modules into {GEN_DIR}!")
+    print(f"[generate_code] Successfully restored all {len(MODULES)} recompiled Source Engine modules into {GEN_DIR}!")
     return True
 
 def main():

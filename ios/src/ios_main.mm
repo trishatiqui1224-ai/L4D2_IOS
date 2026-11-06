@@ -101,6 +101,7 @@ static std::vector<std::string> GameArguments(const fs::path& docs, const fs::pa
         "--ios_readback_max_kb=64",
         "--occlusion_query_enable=false",
         "--readback_memexport=false",
+        "--ios_iso_stream=true",
         "--gpu_sin_msaa=true",
         "--audio_maxqframes=64",
         "--ios_xma_starve_reset=false",

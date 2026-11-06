@@ -35,6 +35,16 @@
 
 namespace fs = std::filesystem;
 
+static void RegisterL4D2StaticModules(rex::system::KernelState* kernel_state) {
+    l4d2::ModuleLoader::RegisterRecompiledModules(kernel_state);
+}
+
+static const rex::PPCImageInfo kL4D2PPCImageConfig = [] {
+    auto config = l4d2_default_PPCImageConfig;
+    config.register_modules = &RegisterL4D2StaticModules;
+    return config;
+}();
+
 // ReXGlue cvars declared or defined for L4D2 on iOS
 REXCVAR_DECLARE(std::string, log_level);
 REXCVAR_DECLARE(std::string, game_data_root);
@@ -86,7 +96,7 @@ public:
     using rex::ReXApp::ReXApp;
 
     static std::unique_ptr<rex::ui::WindowedApp> Create(rex::ui::WindowedAppContext& ctx) {
-        return std::unique_ptr<L4D2App>(new L4D2App(ctx, "l4d2recomp", l4d2_default_PPCImageConfig));
+        return std::unique_ptr<L4D2App>(new L4D2App(ctx, "l4d2recomp", kL4D2PPCImageConfig));
     }
 
 protected:

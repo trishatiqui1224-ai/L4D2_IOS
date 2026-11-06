@@ -91,14 +91,20 @@ jobs:
 
       - name: Restore Recompiled C++ Sources from gen.tar.gz
         run: |
-          echo "[CI] Restoring all 19 recompiled Source Engine modules..."
+          echo "[CI] Restoring all 22 recompiled Source Engine modules..."
           python3 tools/generate_code.py --unpack-cache
           python3 tools/make_stubs.py
+
+      - name: Verify Static Multi-Module Dispatcher Coverage
+        run: |
+          python3 tools/verify_recomp_dispatch.py
 
       - name: Prepare ReXGlue iOS SDK & MoltenVK
         run: |
           echo "[CI] Preparing ReXGlue iOS SDK tree and MoltenVK.framework..."
           python3 tools/ios/prepare_sdk.py --sdk "${GITHUB_WORKSPACE}/../rexglue-sdk-ios"
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_host_stack.py --status
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_relative_paths.py --status
           if [ -d "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" ]; then
             (cd "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" && git tag -f v0.10.0 HEAD 2>/dev/null || true)
           fi
@@ -211,6 +217,13 @@ jobs:
             echo "ERROR: Expected 10,000+ compiled PPC functions in L4D2Game, found $FUNC_COUNT!"
             exit 1
           fi
+          for symbol in sub_82C246E0 sub_82E21480 sub_836A2B40 sub_836940A0; do
+            if ! nm -gU "$GAME_BIN" | grep -Fq "$symbol"; then
+              echo "ERROR: Required startup function $symbol is missing from L4D2Game."
+              exit 1
+            fi
+          done
+          echo "[CI] Verified tier0/vstdlib/launcher entry functions are linked into L4D2Game."
           echo "[CI] Verification PASSED: Real static-recompiled IPA verified ($IPA_BYTES bytes, $FUNC_COUNT PPC functions)."
           rm -rf /tmp/ipa_inspect
 
@@ -239,5 +252,5 @@ jobs:
             dist/L4D2-Recomp-iOS.ipa
             dist/SHA256SUMS.txt
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-test') }}
           generate_release_notes: true
