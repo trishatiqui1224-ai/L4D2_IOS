@@ -313,8 +313,7 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     void* hGpu = dlopen("@executable_path/Frameworks/librexgpu-xenos.dylib", RTLD_NOW | RTLD_GLOBAL);
     if (!hGpu) {
         const char* err = dlerror();
-        std::string msg = std::string("Failed to load librexgpu-xenos.dylib:
-") + (err ? err : "unknown error");
+        std::string msg = std::string("Failed to load librexgpu-xenos.dylib:\n") + (err ? err : "unknown error");
         l4d2::boot::Trace("[FATAL] " + msg);
         ShowErrorAlert(@"Launch Error", [NSString stringWithUTF8String:msg.c_str()]);
         return 1;
@@ -327,8 +326,7 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     void* hGame = dlopen("@executable_path/Frameworks/L4D2Game.framework/L4D2Game", RTLD_NOW | RTLD_GLOBAL);
     if (!hGame) {
         const char* err = dlerror();
-        std::string msg = std::string("Failed to load L4D2Game.framework/L4D2Game:
-") + (err ? err : "unknown error");
+        std::string msg = std::string("Failed to load L4D2Game.framework/L4D2Game:\n") + (err ? err : "unknown error");
         l4d2::boot::Trace("[FATAL] " + msg);
         ShowErrorAlert(@"Launch Error", [NSString stringWithUTF8String:msg.c_str()]);
         return 1;
@@ -341,8 +339,7 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     L4D2_StartGameFn startGameFn = (L4D2_StartGameFn)dlsym(hGame, "L4D2_StartGame");
     const char* dlsymErr = dlerror();
     if (!startGameFn || dlsymErr) {
-        std::string msg = std::string("Failed to resolve L4D2_StartGame:
-") + (dlsymErr ? dlsymErr : "dlsym returned NULL");
+        std::string msg = std::string("Failed to resolve L4D2_StartGame:\n") + (dlsymErr ? dlsymErr : "dlsym returned NULL");
         l4d2::boot::Trace("[FATAL] " + msg);
         ShowErrorAlert(@"Launch Error", [NSString stringWithUTF8String:msg.c_str()]);
         return 1;
@@ -386,12 +383,8 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
         std::string lastErr = ReadLastErrorFromLog(docs / "l4d2.log");
         NSString* detail = lastErr.empty()
             ? @"Check Documents/boot.txt and Documents/l4d2.log for diagnostics."
-            : [NSString stringWithFormat:@"%s
-
-Check Documents/boot.txt and Documents/l4d2.log for full diagnostics.", lastErr.c_str()];
-        NSString* msg = [NSString stringWithFormat:@"Left 4 Dead 2 exited with code %d.
-
-%@", result, detail];
+            : [NSString stringWithFormat:@"%s\n\nCheck Documents/boot.txt and Documents/l4d2.log for full diagnostics.", lastErr.c_str()];
+        NSString* msg = [NSString stringWithFormat:@"Left 4 Dead 2 exited with code %d.\n\n%@", result, detail];
         ShowErrorAlert(@"Left 4 Dead 2 Exited", msg);
     }
     return result;
