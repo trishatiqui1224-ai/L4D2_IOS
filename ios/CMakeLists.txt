@@ -80,6 +80,16 @@ set(REXGLUE_ENABLE_DESKTOP_SDL_BACKENDS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${L4D2_SDK}" rexglue-sdk)
 
+# The minimal launcher resolves SDL_RunApp from librexruntime.dylib with dlsym,
+# so the static linker has no direct reference that would pull SDL's UIKit
+# entry-point object (and its UIApplicationDelegate class) into the runtime.
+# Force-load SDL3 into rexruntime so the delegate is present at app launch.
+if(TARGET rexruntime AND TARGET SDL3-static)
+    target_link_options(rexruntime PRIVATE
+        "-Wl,-force_load,$<TARGET_FILE:SDL3-static>"
+    )
+endif()
+
 # =============================================================================
 # 1.5. Common ReXGlue & Thirdparty Header Configuration
 # =============================================================================
