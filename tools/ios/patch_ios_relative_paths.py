@@ -15,9 +15,9 @@ PATCHED = '''  // LOCAL PATCH - iOS: resolve device-less paths from the disc lau
   std::string launch_relative_path;
   std::string_view path_to_resolve = path;
   const bool has_device = path.find(':') != std::string_view::npos;
-  const bool rooted = !path.empty() && (path.front() == '\\' || path.front() == '/');
+  const bool rooted = !path.empty() && (path.front() == '\\\\' || path.front() == '/');
   if (!has_device && !rooted) {
-    launch_relative_path = "game:\\";
+    launch_relative_path = "game:\\\\";
     launch_relative_path.append(path);
     path_to_resolve = launch_relative_path;
   }
