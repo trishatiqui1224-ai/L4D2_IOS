@@ -137,11 +137,31 @@ jobs:
 
       - name: Compile iOS Target Bundle & Static Recomp Modules
         run: |
-          cmake --build build --config Release -- -j 4 || {
-            echo "[CI] Build failed, retrying with verbose single-job output..."
-            cmake --build build --config Release -v -- -j 1
-            exit 1
-          }
+          if cmake --build build --config Release -- -j 4; then
+            exit 0
+          fi
+
+          echo "[CI] Parallel build failed; retrying with verbose single-job output..."
+          set +e
+          cmake --build build --config Release -v -- -j 1 2>&1 | tee /tmp/l4d2-ios-build-retry.log
+          build_status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$build_status" -ne 0 ]; then
+            echo "### Native build diagnostics" >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            grep -E 'error:|fatal error:|undefined reference|ld: error:|ninja: build stopped' /tmp/l4d2-ios-build-retry.log | tail -n 60 >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+            while IFS= read -r line; do
+              safe_line=${line//'%'/'%25'}
+              safe_line=${safe_line//$'\r'/'%0D'}
+              safe_line=${safe_line//$'\n'/'%0A'}
+              echo "::error::$safe_line"
+            done < <(grep -E 'error:|fatal error:|undefined reference|ld: error:|ninja: build stopped' /tmp/l4d2-ios-build-retry.log | tail -n 20 || true)
+          fi
+
+          exit "$build_status"
 
       - name: Package Distributable .ipa
         run: |
