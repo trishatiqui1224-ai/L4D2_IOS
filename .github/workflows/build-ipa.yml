@@ -199,10 +199,9 @@ jobs:
           echo "[CI] Auditing SDLUIKitDelegate Objective-C runtime metadata across app bundle..."
           DELEGATE_MATCHES=0
           while IFS= read -r binary; do
-            CLASS_COUNT=$(otool -ov "$binary" 2>/dev/null | awk '$1 == "name" && $NF == "SDLUIKitDelegate" { count++ } END { print count + 0 }')
-            if [ "$CLASS_COUNT" -gt 0 ]; then
+            if otool -ov "$binary" 2>/dev/null | grep -Fq 'SDLUIKitDelegate'; then
               echo "SDLUIKitDelegate metadata found in: ${binary#/tmp/ipa_inspect/Payload/L4D2Recomp.app/}"
-              DELEGATE_MATCHES=$((DELEGATE_MATCHES + CLASS_COUNT))
+              DELEGATE_MATCHES=$((DELEGATE_MATCHES + 1))
             fi
           done < <(find /tmp/ipa_inspect/Payload/L4D2Recomp.app -type f \
             ! -path '*/_CodeSignature/*' \
