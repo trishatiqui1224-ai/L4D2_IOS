@@ -45,3 +45,4 @@ def patch_module_symbol_prefixes():
 
 if __name__ == "__main__":
     patch_module_symbol_prefixes()
+
