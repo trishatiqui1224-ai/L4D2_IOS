@@ -110,7 +110,7 @@ void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const cha
         auto* ctx = ts->context();
         char gr_buf[256];
         snprintf(gr_buf, sizeof(gr_buf), "Active Guest Thread Registers:\n  LR:  0x%08X  CTR: 0x%08X  R1: 0x%08X",
-                 (uint32_t)ctx->lr, (uint32_t)ctx->ctr, (uint32_t)ctx->r1.u32);
+                 (uint32_t)ctx->lr, ctx->ctr.u32, ctx->r1.u32);
         write_out(gr_buf);
 
         snprintf(gr_buf, sizeof(gr_buf), "  r3:  0x%08X  r4:  0x%08X  r5:  0x%08X  r6: 0x%08X",
