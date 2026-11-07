@@ -68,11 +68,11 @@ extern "C" void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_
 
     L4D2_LOG_ERROR("CRASH", "%s", buf);
 
-    FILE* bf = fopen("boot.txt", "a");
-    if (!bf) {
-        const char* bp = std::getenv("L4D2_BOOT_PATH");
-        if (bp) bf = fopen(bp, "a");
-    }
+    FILE* bf = nullptr;
+    const char* bp = std::getenv("L4D2_BOOT_PATH");
+    if (!bp) bp = std::getenv("NFSMW_SIGNAL_REPORT");
+    if (bp) bf = fopen(bp, "a");
+    if (!bf) bf = fopen("boot.txt", "a");
     if (bf) {
         fprintf(bf, "%s\n", buf);
         fflush(bf);
@@ -297,30 +297,6 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
                       image.image_base, image.image_size);
     }
     L4D2_LOG_INFO("ModuleLoader", "Registered %u compiled non-entrypoint modules into unified function table", registered);
-
-    // 3. Pre-load all non-entrypoint DLL XEX2 sections into guest RAM before default.xex runs.
-    // Loads tier0, vstdlib, filesystem and launcher first, so dependencies exist in guest memory.
-    for (const auto& desc : kSourceModules) {
-        if (strcmp(desc.module_name, "default") == 0) continue;
-        L4D2_LOG_INFO("ModuleLoader", "Pre-loading module XEX2 sections into guest RAM: %s", desc.relative_path);
-        auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
-        if (!mod) {
-            std::string game_path = std::string("game:\\") + desc.relative_path;
-            std::replace(game_path.begin(), game_path.end(), '/', '\\');
-            mod = kernel_state->LoadUserModule(game_path, /*call_entry=*/false);
-        }
-        if (!mod) {
-            std::string d_path = std::string("d:\\") + desc.relative_path;
-            std::replace(d_path.begin(), d_path.end(), '/', '\\');
-            mod = kernel_state->LoadUserModule(d_path, /*call_entry=*/false);
-        }
-        if (mod) {
-            L4D2_LOG_INFO("ModuleLoader", "Pre-loaded '%s' [0x%08X..0x%08X]",
-                          desc.module_name, desc.image_base, desc.image_end);
-        } else {
-            L4D2_LOG_WARN("ModuleLoader", "Could not pre-load %s (will load on demand if requested)", desc.relative_path);
-        }
-    }
 }
 
 void ModuleLoader::Shutdown() {

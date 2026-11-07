@@ -262,6 +262,8 @@ void SetLogFilePath(const std::string& path) {
 }
 
 void Open(const std::string& path) {
+    setenv("L4D2_BOOT_PATH", path.c_str(), 1);
+    setenv("NFSMW_SIGNAL_REPORT", path.c_str(), 1);
     const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
     if (fd < 0) {
         return;

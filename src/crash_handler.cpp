@@ -34,6 +34,8 @@ static std::string s_boot_path = "boot.txt";
 void CrashHandler::SetBootFilePath(const std::string& path) {
     if (!path.empty()) {
         s_boot_path = path;
+        setenv("L4D2_BOOT_PATH", path.c_str(), 1);
+        setenv("NFSMW_SIGNAL_REPORT", path.c_str(), 1);
     }
 }
 
@@ -45,7 +47,11 @@ void CrashHandler::RecordIndirectCall(uint32_t target_pc, const char* hint) {
 
 void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const char* reason,
                                    void* siginfo_ptr, void* ucontext_ptr) {
-    FILE* boot_file = fopen(s_boot_path.c_str(), "a");
+    const char* bp = std::getenv("L4D2_BOOT_PATH");
+    if (!bp) bp = std::getenv("NFSMW_SIGNAL_REPORT");
+    std::string path_to_open = (bp && *bp) ? std::string(bp) : s_boot_path;
+    FILE* boot_file = fopen(path_to_open.c_str(), "a");
+    if (!boot_file) boot_file = fopen(s_boot_path.c_str(), "a");
 
     auto write_out = [&](const std::string& line) {
         L4D2_LOG_FATAL("CRASH", "%s", line.c_str());

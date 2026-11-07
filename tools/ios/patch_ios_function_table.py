@@ -26,7 +26,7 @@ ANCHOR_DISP_TOP = '''#include <rex/system/function_dispatcher.h>
 NEW_DISP_TOP = '''#include <rex/system/function_dispatcher.h>
 #include <rex/system/thread_state.h>
 
-extern "C" ::PPCFunc** g_global_func_table = nullptr;
+extern "C" __attribute__((visibility("default"))) ::PPCFunc** g_global_func_table = nullptr;
 static constexpr uint32_t kGlobalFuncBase = 0x82000000u;
 static constexpr uint32_t kGlobalFuncEnd  = 0x90000000u;
 '''
@@ -86,6 +86,9 @@ NEW_SETFUNC = '''bool FunctionDispatcher::SetFunction(uint32_t guest_address, ::
   if (guest_address == 0) {
     return true; // Skip {0, nullptr} sentinel quietly
   }
+  if (g_global_func_table && guest_address >= kGlobalFuncBase && guest_address < kGlobalFuncEnd) {
+    g_global_func_table[(guest_address - kGlobalFuncBase) >> 2] = func;
+  }
   std::lock_guard<std::recursive_mutex> lock(dispatch_mutex_);
   assert_true(!module_tables_.empty());
 
@@ -95,9 +98,6 @@ NEW_SETFUNC = '''bool FunctionDispatcher::SetFunction(uint32_t guest_address, ::
   }
 
   function_table_[guest_address] = func;
-  if (g_global_func_table && guest_address >= kGlobalFuncBase && guest_address < kGlobalFuncEnd) {
-    g_global_func_table[(guest_address - kGlobalFuncBase) >> 2] = func;
-  }
 '''
 
 # 4. Check g_global_func_table in FunctionDispatcher::GetFunction
@@ -133,7 +133,7 @@ ANCHOR_MEM_TOP = '''#include <rex/system/mmio_handler.h>
 NEW_MEM_TOP = '''#include <rex/system/mmio_handler.h>
 #include <rex/system/xmemory.h>
 
-extern "C" ::PPCFunc** g_global_func_table;
+extern "C" __attribute__((visibility("default"))) ::PPCFunc** g_global_func_table;
 '''
 
 # 6. Stop in-arena AllocFixed in Memory::InitializeFunctionTable

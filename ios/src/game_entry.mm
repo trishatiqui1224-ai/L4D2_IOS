@@ -258,11 +258,14 @@ int L4D2_StartGame(int argc, char** argv) {
 
     NSArray<NSString*>* docPaths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     fs::path docs = docPaths.firstObject ? fs::path(docPaths.firstObject.UTF8String) : fs::path("/var/mobile/Documents");
+    const std::string bootPathStr = (docs / "boot.txt").string();
+    setenv("L4D2_BOOT_PATH", bootPathStr.c_str(), 1);
+    setenv("NFSMW_SIGNAL_REPORT", bootPathStr.c_str(), 1);
     boot::SetupAltStack();
-    boot::Open((docs / "boot.txt").string());
+    boot::Open(bootPathStr);
     boot::SetLogFilePath((docs / "l4d2.log").string());
     l4d2::CrashHandler::Install();
-    l4d2::CrashHandler::SetBootFilePath((docs / "boot.txt").string());
+    l4d2::CrashHandler::SetBootFilePath(bootPathStr);
 
     // 1. audio: activating the session
     boot::Trace("audio: activating the session");

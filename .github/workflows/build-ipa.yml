@@ -94,6 +94,8 @@ jobs:
           echo "[CI] Restoring all 22 recompiled Source Engine modules..."
           python3 tools/generate_code.py --unpack-cache
           python3 tools/make_stubs.py
+          python3 tools/patch_safe_indirect_dispatch.py --apply
+          python3 tools/patch_safe_indirect_dispatch.py --status
 
       - name: Verify Static Multi-Module Dispatcher Coverage
         run: |
@@ -105,6 +107,8 @@ jobs:
           python3 tools/ios/prepare_sdk.py --sdk "${GITHUB_WORKSPACE}/../rexglue-sdk-ios"
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_host_stack.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_relative_paths.py --status
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_function_table.py --status
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_signal_forwarding.py --status
           if [ -d "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" ]; then
             (cd "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" && git tag -f v0.10.0 HEAD 2>/dev/null || true)
           fi

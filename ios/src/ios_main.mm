@@ -182,6 +182,9 @@ static void EarlyBootTrace() {
     char logPath[1024];
     snprintf(logPath, sizeof(logPath), "%s/Documents/l4d2.log", home);
 
+    setenv("L4D2_BOOT_PATH", bootPath, 1);
+    setenv("NFSMW_SIGNAL_REPORT", bootPath, 1);
+
     l4d2::boot::SetupAltStack();
     l4d2::boot::Open(bootPath);
     l4d2::boot::SetLogFilePath(logPath);
@@ -429,8 +432,11 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     const int game_argc = static_cast<int>(texts.size());
 
     // Re-assert signal handlers right before entering dynamic recomp runtime
+    const std::string bootFileStr = (docs / "boot.txt").string();
+    setenv("L4D2_BOOT_PATH", bootFileStr.c_str(), 1);
+    setenv("NFSMW_SIGNAL_REPORT", bootFileStr.c_str(), 1);
     l4d2::boot::SetupAltStack();
-    l4d2::boot::Open((docs / "boot.txt").string());
+    l4d2::boot::Open(bootFileStr);
     l4d2::boot::SetLogFilePath((docs / "l4d2.log").string());
 
     l4d2::boot::Trace("[main] Calling L4D2_StartGame synchronously inside L4D2_SDLMain...");
