@@ -45,6 +45,11 @@ def main():
         return 0
 
     patch_apple_weak_pch()
+    try:
+        from patch_module_prefixes import patch_module_symbol_prefixes
+        patch_module_symbol_prefixes()
+    except Exception as e:
+        print(f"[make_stubs] Warning: patch_module_symbol_prefixes failed: {e}")
 
     all_defined = set()
     all_referenced = set()

@@ -38,6 +38,17 @@ def main() -> int:
         if not (module_dir / "sources.cmake").is_file():
             errors.append(f"{module}: generated sources are missing ({module_dir.relative_to(ROOT)})")
 
+    # Verify that every module defines its unique l4d2_<prefix>_PPCImageConfig
+    for spec in re.findall(r'"([a-zA-Z0-9_]+:[a-zA-Z0-9_]+:[a-zA-Z0-9_]+)"', cmake):
+        _, dir_name, prefix = spec.split(":")
+        init_file = GENERATED / dir_name / f"l4d2_{prefix}_init.cpp"
+        if init_file.is_file():
+            content = init_file.read_text(encoding="utf-8")
+            if f"l4d2_{prefix}_PPCImageConfig" not in content:
+                errors.append(f"{dir_name}: missing symbol l4d2_{prefix}_PPCImageConfig in {init_file.name}")
+        else:
+            errors.append(f"{dir_name}: missing init file {init_file.name}")
+
     for module, addresses in REQUIRED_FUNCTIONS.items():
         # The generated prefixes don't always match the module directory name.
         prefix = {

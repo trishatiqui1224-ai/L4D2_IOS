@@ -38,7 +38,13 @@ def unpack_cache():
         if not p.exists():
             print(f"[ERROR] Expected module source list missing: {p}")
             return False
-            
+
+    try:
+        from patch_module_prefixes import patch_module_symbol_prefixes
+        patch_module_symbol_prefixes()
+    except Exception as e:
+        print(f"[generate_code] Warning: patch_module_symbol_prefixes failed: {e}")
+
     print(f"[generate_code] Successfully restored all {len(MODULES)} recompiled Source Engine modules into {GEN_DIR}!")
     return True
 
