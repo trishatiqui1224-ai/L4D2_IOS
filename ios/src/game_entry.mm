@@ -287,8 +287,6 @@ int L4D2_StartGame(int argc, char** argv) {
         setenv("MVK_CONFIG_PERFORMANCE_LOGGING_FRAME_COUNT", "300", 1);
     }
 
-    NSArray<NSString*>* docPaths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    fs::path docs = docPaths.firstObject ? fs::path(docPaths.firstObject.UTF8String) : fs::path("/var/mobile/Documents");
     fs::path logPath = docs / "l4d2.log";
 
     rex::InitLogging(logPath.c_str(), REXCVAR_GET(log_level) == "off" ? spdlog::level::off : spdlog::level::info);
