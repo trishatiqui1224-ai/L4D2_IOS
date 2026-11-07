@@ -5,6 +5,7 @@
 #include <rex/runtime.h>
 #include <rex/system/function_dispatcher.h>
 #include <rex/system/kernel_state.h>
+#include <rex/system/user_module.h>
 
 #include <algorithm>
 #include <filesystem>
@@ -210,9 +211,9 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
 
     // Pre-populate default.xex compiled functions into global table
     if (g_global_func_table && l4d2_default_PPCImageConfig.func_mappings) {
-        for (const auto* m = l4d2_default_PPCImageConfig.func_mappings; m && m->host_function != nullptr; ++m) {
-            if (m->guest_address >= kGlobalFuncTableBase && m->guest_address < kGlobalFuncTableEnd) {
-                g_global_func_table[(m->guest_address - kGlobalFuncTableBase) >> 2] = m->host_function;
+        for (const auto* m = l4d2_default_PPCImageConfig.func_mappings; m && m->host != nullptr; ++m) {
+            if (m->guest >= kGlobalFuncTableBase && m->guest < kGlobalFuncTableEnd) {
+                g_global_func_table[(m->guest - kGlobalFuncTableBase) >> 2] = m->host;
             }
         }
     }
@@ -274,9 +275,9 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
 
         // Populate unified global function table directly from func_mappings
         if (g_global_func_table && image.func_mappings) {
-            for (const auto* m = image.func_mappings; m && m->host_function != nullptr; ++m) {
-                if (m->guest_address >= kGlobalFuncTableBase && m->guest_address < kGlobalFuncTableEnd) {
-                    g_global_func_table[(m->guest_address - kGlobalFuncTableBase) >> 2] = m->host_function;
+            for (const auto* m = image.func_mappings; m && m->host != nullptr; ++m) {
+                if (m->guest >= kGlobalFuncTableBase && m->guest < kGlobalFuncTableEnd) {
+                    g_global_func_table[(m->guest - kGlobalFuncTableBase) >> 2] = m->host;
                 }
             }
         }
