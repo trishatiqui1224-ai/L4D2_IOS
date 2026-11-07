@@ -44,7 +44,18 @@ static std::string OptionName(const std::string& arg) {
     return arg.substr(0, arg.find('='));
 }
 
-static void SetArgument(std::vector<std::string>& args, const std::string& arg) {
+static std::string NormalizeArgument(const std::string& arg) {
+    if (arg.rfind("--resolution=", 0) == 0) {
+        std::string val = arg.substr(13);
+        if (val == "720p") return "--resolution=1280x720";
+        if (val == "540p") return "--resolution=960x540";
+        if (val == "480p") return "--resolution=854x480";
+    }
+    return arg;
+}
+
+static void SetArgument(std::vector<std::string>& args, const std::string& raw_arg) {
+    const std::string arg = NormalizeArgument(raw_arg);
     if (args.empty()) {
         args.push_back(arg);
         return;

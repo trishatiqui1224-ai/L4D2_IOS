@@ -2,6 +2,7 @@
 #include "logging/logger.h"
 
 #include <rex/image_info.h>
+#include <rex/runtime.h>
 #include <rex/system/function_dispatcher.h>
 #include <rex/system/kernel_state.h>
 
@@ -9,6 +10,111 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
+
+constexpr uint32_t kGlobalFuncTableBase = 0x82000000u;
+constexpr uint32_t kGlobalFuncTableEnd  = 0x90000000u;
+constexpr size_t   kGlobalFuncTableEntries = (kGlobalFuncTableEnd - kGlobalFuncTableBase) >> 2;
+constexpr size_t   kGlobalFuncTableBytes = kGlobalFuncTableEntries * sizeof(PPCFunc*);
+
+extern "C" PPCFunc** g_global_func_table = nullptr;
+
+static void InitializeGlobalFunctionTable() {
+    if (g_global_func_table != nullptr) {
+        return;
+    }
+#if defined(_WIN32)
+    g_global_func_table = static_cast<PPCFunc**>(
+        VirtualAlloc(nullptr, kGlobalFuncTableBytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+#else
+    void* ptr = mmap(nullptr, kGlobalFuncTableBytes, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+    if (ptr != MAP_FAILED) {
+        g_global_func_table = static_cast<PPCFunc**>(ptr);
+    }
+#endif
+    if (g_global_func_table) {
+        L4D2_LOG_INFO("ModuleLoader", "Allocated unified global function table: %zu MB (0x%08X..0x%08X)",
+                      kGlobalFuncTableBytes / (1024 * 1024), kGlobalFuncTableBase, kGlobalFuncTableEnd);
+    } else {
+        L4D2_LOG_ERROR("ModuleLoader", "Failed to allocate unified global function table");
+    }
+}
+
+extern "C" PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr) {
+    if (__builtin_expect(guest_addr >= kGlobalFuncTableBase && guest_addr < kGlobalFuncTableEnd, 1)) {
+        if (g_global_func_table) {
+            PPCFunc* fn = g_global_func_table[(guest_addr - kGlobalFuncTableBase) >> 2];
+            if (fn) return fn;
+        }
+    }
+    return nullptr;
+}
+
+extern "C" void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3) {
+    std::string mod_target = l4d2::ModuleLoader::Instance().SymbolicateAddress(target_addr);
+    std::string mod_caller = l4d2::ModuleLoader::Instance().SymbolicateAddress(caller_lr);
+
+    char buf[512];
+    snprintf(buf, sizeof(buf),
+             "[UNRESOLVED INDIRECT CALL] Target: 0x%08X (%s), Caller LR: 0x%08X (%s), r3: 0x%08X",
+             target_addr, mod_target.c_str(), caller_lr, mod_caller.c_str(), r3);
+
+    L4D2_LOG_ERROR("CRASH", "%s", buf);
+
+    FILE* bf = fopen("boot.txt", "a");
+    if (!bf) {
+        const char* bp = std::getenv("L4D2_BOOT_PATH");
+        if (bp) bf = fopen(bp, "a");
+    }
+    if (bf) {
+        fprintf(bf, "%s\n", buf);
+        fflush(bf);
+#if !defined(_WIN32)
+        fsync(fileno(bf));
+#endif
+        fclose(bf);
+    }
+    l4d2::log::Logger::Instance().Flush();
+}
+
+extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr) {
+    if (__builtin_expect(target_addr == 0, 0)) {
+        LogUnresolvedIndirectCall(target_addr, caller_lr, ctx.r3.u32);
+        ctx.r3.u64 = 0;
+        return;
+    }
+
+    PPCFunc* fn = LookupGlobalFunction(base, target_addr);
+    if (__builtin_expect(fn != nullptr, 1)) {
+        fn(ctx, base);
+        return;
+    }
+
+    // Try fallback in runtime FunctionDispatcher if not yet cached in global table
+    rex::runtime::FunctionDispatcher* dispatcher = nullptr;
+    if (auto* runtime = rex::Runtime::instance()) {
+        dispatcher = runtime->function_dispatcher();
+    }
+    if (dispatcher) {
+        fn = dispatcher->GetFunction(target_addr);
+        if (fn) {
+            if (g_global_func_table && target_addr >= kGlobalFuncTableBase && target_addr < kGlobalFuncTableEnd) {
+                g_global_func_table[(target_addr - kGlobalFuncTableBase) >> 2] = fn;
+            }
+            fn(ctx, base);
+            return;
+        }
+    }
+
+    LogUnresolvedIndirectCall(target_addr, caller_lr, ctx.r3.u32);
+    ctx.r3.u64 = 0;
+}
 
 namespace rex::runtime { class IModuleRegistrar; }
 
@@ -99,35 +205,60 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
         return;
     }
 
+    // 1. Initialize unified global function table (448 MB virtual memory covering 0x82000000..0x90000000)
+    InitializeGlobalFunctionTable();
+
+    // Pre-populate default.xex compiled functions into global table
+    if (g_global_func_table && l4d2_default_PPCImageConfig.func_mappings) {
+        for (const auto* m = l4d2_default_PPCImageConfig.func_mappings; m && m->host_function != nullptr; ++m) {
+            if (m->guest_address >= kGlobalFuncTableBase && m->guest_address < kGlobalFuncTableEnd) {
+                g_global_func_table[(m->guest_address - kGlobalFuncTableBase) >> 2] = m->host_function;
+            }
+        }
+    }
+
+    // 2. Pre-load all non-entrypoint DLL XEX2 sections into guest RAM before default.xex runs.
+    // Loads tier0, vstdlib, filesystem and launcher first, so dependencies exist in guest memory.
+    for (const auto& desc : kSourceModules) {
+        if (strcmp(desc.module_name, "default") == 0) continue;
+        L4D2_LOG_INFO("ModuleLoader", "Pre-loading module XEX2 sections into guest RAM: %s", desc.relative_path);
+        auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
+        if (mod) {
+            L4D2_LOG_INFO("ModuleLoader", "Pre-loaded '%s' [0x%08X..0x%08X]",
+                          desc.module_name, desc.image_base, desc.image_end);
+        } else {
+            L4D2_LOG_WARN("ModuleLoader", "Could not pre-load %s (will load on demand if requested)", desc.relative_path);
+        }
+    }
+
     struct RecompModuleBinding {
         const char* module_id;
         const rex::PPCImageInfo* image;
         rex::runtime::FunctionDispatcher::RegisterFn register_fn;
     };
 
-    // The entrypoint config is already initialized by ReXGlue. Register every
-    // other compiled module into its own address range before default.xex runs.
+    // Organized in dependency order: tier0, vstdlib, filesystem, launcher first
     static const RecompModuleBinding kBindings[] = {
-        {"engine_360.dll", &l4d2_engine_PPCImageConfig, l4d2_engine_RegisterFunctions},
-        {"client_360.dll", &l4d2_client_PPCImageConfig, l4d2_client_RegisterFunctions},
-        {"server_360.dll", &l4d2_server_PPCImageConfig, l4d2_server_RegisterFunctions},
+        {"tier0_360.dll", &l4d2_tier0_PPCImageConfig, l4d2_tier0_RegisterFunctions},
+        {"vstdlib_360.dll", &l4d2_vstdlib_PPCImageConfig, l4d2_vstdlib_RegisterFunctions},
+        {"FileSystem_Stdio_360.dll", &l4d2_filesystem_PPCImageConfig, l4d2_filesystem_RegisterFunctions},
+        {"launcher_360.dll", &l4d2_launcher_PPCImageConfig, l4d2_launcher_RegisterFunctions},
+        {"datacache_360.dll", &l4d2_datacache_PPCImageConfig, l4d2_datacache_RegisterFunctions},
+        {"vphysics_360.dll", &l4d2_vphysics_PPCImageConfig, l4d2_vphysics_RegisterFunctions},
         {"MaterialSystem_360.dll", &l4d2_materialsystem_PPCImageConfig, l4d2_materialsystem_RegisterFunctions},
         {"shaderapidx9_360.dll", &l4d2_shaderapidx9_PPCImageConfig, l4d2_shaderapidx9_RegisterFunctions},
         {"stdshader_dx9_360.dll", &l4d2_stdshader_dx9_PPCImageConfig, l4d2_stdshader_dx9_RegisterFunctions},
         {"StudioRender_360.dll", &l4d2_studiorender_PPCImageConfig, l4d2_studiorender_RegisterFunctions},
-        {"vphysics_360.dll", &l4d2_vphysics_PPCImageConfig, l4d2_vphysics_RegisterFunctions},
         {"SoundEmitterSystem_360.dll", &l4d2_soundemitter_PPCImageConfig, l4d2_soundemitter_RegisterFunctions},
-        {"datacache_360.dll", &l4d2_datacache_PPCImageConfig, l4d2_datacache_RegisterFunctions},
         {"SceneFileCache_360.dll", &l4d2_scenefilecache_PPCImageConfig, l4d2_scenefilecache_RegisterFunctions},
         {"vgui2_360.dll", &l4d2_vgui2_PPCImageConfig, l4d2_vgui2_RegisterFunctions},
         {"vguimatsurface_360.dll", &l4d2_vguimatsurface_PPCImageConfig, l4d2_vguimatsurface_RegisterFunctions},
         {"inputsystem_360.dll", &l4d2_inputsystem_PPCImageConfig, l4d2_inputsystem_RegisterFunctions},
-        {"FileSystem_Stdio_360.dll", &l4d2_filesystem_PPCImageConfig, l4d2_filesystem_RegisterFunctions},
-        {"vstdlib_360.dll", &l4d2_vstdlib_PPCImageConfig, l4d2_vstdlib_RegisterFunctions},
-        {"tier0_360.dll", &l4d2_tier0_PPCImageConfig, l4d2_tier0_RegisterFunctions},
-        {"launcher_360.dll", &l4d2_launcher_PPCImageConfig, l4d2_launcher_RegisterFunctions},
-        {"GameUI_360.dll", &l4d2_gameui_PPCImageConfig, l4d2_gameui_RegisterFunctions},
         {"vscript_360.dll", &l4d2_vscript_PPCImageConfig, l4d2_vscript_RegisterFunctions},
+        {"GameUI_360.dll", &l4d2_gameui_PPCImageConfig, l4d2_gameui_RegisterFunctions},
+        {"engine_360.dll", &l4d2_engine_PPCImageConfig, l4d2_engine_RegisterFunctions},
+        {"client_360.dll", &l4d2_client_PPCImageConfig, l4d2_client_RegisterFunctions},
+        {"server_360.dll", &l4d2_server_PPCImageConfig, l4d2_server_RegisterFunctions},
         {"matchmaking_360.dll", &l4d2_matchmaking_PPCImageConfig, l4d2_matchmaking_RegisterFunctions},
     };
 
@@ -140,13 +271,23 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
                            binding.module_id, image.code_base, image.image_base);
             continue;
         }
+
+        // Populate unified global function table directly from func_mappings
+        if (g_global_func_table && image.func_mappings) {
+            for (const auto* m = image.func_mappings; m && m->host_function != nullptr; ++m) {
+                if (m->guest_address >= kGlobalFuncTableBase && m->guest_address < kGlobalFuncTableEnd) {
+                    g_global_func_table[(m->guest_address - kGlobalFuncTableBase) >> 2] = m->host_function;
+                }
+            }
+        }
+
         dispatcher->RegisterModule(binding.module_id, image.code_base, binding.register_fn);
         ++registered;
         L4D2_LOG_INFO("ModuleLoader", "Registered compiled functions for %s: code=%08X-%08X image=%08X+%08X",
                       binding.module_id, image.code_base, image.code_base + image.code_size,
                       image.image_base, image.image_size);
     }
-    L4D2_LOG_INFO("ModuleLoader", "Registered %u compiled non-entrypoint modules", registered);
+    L4D2_LOG_INFO("ModuleLoader", "Registered %u compiled non-entrypoint modules into unified function table", registered);
 }
 
 void ModuleLoader::Shutdown() {

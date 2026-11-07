@@ -2,6 +2,9 @@
 #include "logging/logger.h"
 #include "module_loader.h"
 
+#include <rex/system/thread_state.h>
+#include <rex/ppc/context.h>
+
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -37,7 +40,8 @@ void CrashHandler::RecordIndirectCall(uint32_t target_pc, const char* hint) {
     log::Logger::Instance().RecordBreadcrumb(buf);
 }
 
-void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const char* reason) {
+void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const char* reason,
+                                   void* siginfo_ptr, void* ucontext_ptr) {
     FILE* boot_file = fopen(s_boot_path.c_str(), "a");
 
     auto write_out = [&](const std::string& line) {
@@ -55,6 +59,65 @@ void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const cha
     char sig_buf[128];
     snprintf(sig_buf, sizeof(sig_buf), "Signal: %d, Reason: %s", sig, reason ? reason : "Unknown");
     write_out(sig_buf);
+
+#if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+    if (siginfo_ptr) {
+        siginfo_t* si = reinterpret_cast<siginfo_t*>(siginfo_ptr);
+        char si_buf[256];
+        snprintf(si_buf, sizeof(si_buf), "Faulting si_addr: %p (si_code: 0x%X)", si->si_addr, si->si_code);
+        write_out(si_buf);
+    }
+#if defined(__APPLE__) && defined(__aarch64__)
+    if (ucontext_ptr) {
+        ucontext_t* uc = reinterpret_cast<ucontext_t*>(ucontext_ptr);
+        auto mc = uc->uc_mcontext;
+#if __DARWIN_OPAQUE_ARM_THREAD_STATE64
+        uintptr_t host_pc = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_pc);
+        uintptr_t host_lr = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_lr);
+        uintptr_t host_sp = reinterpret_cast<uintptr_t>(mc->__ss.__opaque_sp);
+#else
+        uintptr_t host_pc = mc->__ss.__pc;
+        uintptr_t host_lr = mc->__ss.__lr;
+        uintptr_t host_sp = mc->__ss.__sp;
+#endif
+        Dl_info dli_pc{};
+        const char* pc_sym = (dladdr(reinterpret_cast<void*>(host_pc), &dli_pc) && dli_pc.dli_sname)
+                                 ? dli_pc.dli_sname : "unknown";
+        char pc_buf[256];
+        snprintf(pc_buf, sizeof(pc_buf), "Host PC: 0x%016lX [%s]", (unsigned long)host_pc, pc_sym);
+        write_out(pc_buf);
+
+        Dl_info dli_lr{};
+        const char* lr_sym = (dladdr(reinterpret_cast<void*>(host_lr), &dli_lr) && dli_lr.dli_sname)
+                                 ? dli_lr.dli_sname : "unknown";
+        char lr_buf[256];
+        snprintf(lr_buf, sizeof(lr_buf), "Host LR (Caller): 0x%016lX [%s]", (unsigned long)host_lr, lr_sym);
+        write_out(lr_buf);
+
+        char sp_buf[128];
+        snprintf(sp_buf, sizeof(sp_buf), "Host SP: 0x%016lX", (unsigned long)host_sp);
+        write_out(sp_buf);
+    }
+#endif
+#endif
+
+    // Dump active guest thread registers from ReXGlue ThreadState if available
+    auto* ts = rex::system::ThreadState::Get();
+    if (ts && ts->context()) {
+        auto* ctx = ts->context();
+        char gr_buf[256];
+        snprintf(gr_buf, sizeof(gr_buf), "Active Guest Thread Registers:\n  LR:  0x%08X  CTR: 0x%08X  R1: 0x%08X",
+                 (uint32_t)ctx->lr, (uint32_t)ctx->ctr, (uint32_t)ctx->r1.u32);
+        write_out(gr_buf);
+
+        snprintf(gr_buf, sizeof(gr_buf), "  r3:  0x%08X  r4:  0x%08X  r5:  0x%08X  r6: 0x%08X",
+                 ctx->r3.u32, ctx->r4.u32, ctx->r5.u32, ctx->r6.u32);
+        write_out(gr_buf);
+
+        snprintf(gr_buf, sizeof(gr_buf), "  r7:  0x%08X  r8:  0x%08X  r9:  0x%08X  r10: 0x%08X  r11: 0x%08X  r12: 0x%08X",
+                 ctx->r7.u32, ctx->r8.u32, ctx->r9.u32, ctx->r10.u32, ctx->r11.u32, ctx->r12.u32);
+        write_out(gr_buf);
+    }
 
     const GuestRegisters* r = regs ? regs : (s_has_regs ? &s_last_regs : nullptr);
     if (r) {
@@ -107,6 +170,10 @@ void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const cha
     write_out("================================================================================");
     log::Logger::Instance().Flush();
     if (boot_file) {
+        fflush(boot_file);
+#if !defined(_WIN32)
+        fsync(fileno(boot_file));
+#endif
         fclose(boot_file);
     }
 }
@@ -115,7 +182,7 @@ void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const cha
 static uint8_t s_alt_stack[SIGSTKSZ * 4];
 
 static void PosixSignalHandler(int sig, siginfo_t* info, void* ctx) {
-    CrashHandler::DumpCrashState(sig, nullptr, "POSIX Signal Fault");
+    CrashHandler::DumpCrashState(sig, nullptr, "POSIX Signal Fault", info, ctx);
     _exit(128 + sig);
 }
 
@@ -137,6 +204,9 @@ void CrashHandler::Install() {
     sigaction(SIGILL,  &sa, nullptr);
     sigaction(SIGFPE,  &sa, nullptr);
     sigaction(SIGABRT, &sa, nullptr);
+#if defined(SIGTRAP)
+    sigaction(SIGTRAP, &sa, nullptr);
+#endif
     L4D2_LOG_INFO("CrashHandler", "Installed POSIX sigaltstack crash handler");
 }
 #else

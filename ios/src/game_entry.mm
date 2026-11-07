@@ -164,6 +164,10 @@ protected:
         // 2. Render Config
         l4d2::RenderConfig renderCfg;
         std::string res = rex::cvar::GetFlagByName("resolution");
+        if (res == "720p") res = "1280x720";
+        else if (res == "540p") res = "960x540";
+        else if (res == "480p") res = "854x480";
+
         if (res.find("480") != std::string::npos) {
             renderCfg.resolution = l4d2::ResolutionPreset::Res480p;
         } else if (res.find("540") != std::string::npos) {

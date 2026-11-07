@@ -810,7 +810,11 @@ std::vector<std::string> SettingsArguments(const fs::path& documents) {
     std::vector<std::string> args;
 
     // Display
-    args.push_back("--resolution=" + std::string(s[@"resolution"] ? s[@"resolution"].UTF8String : "1280x720"));
+    NSString* resStr = s[@"resolution"] ? s[@"resolution"] : @"1280x720";
+    if ([resStr isEqualToString:@"720p"]) resStr = @"1280x720";
+    else if ([resStr isEqualToString:@"540p"]) resStr = @"960x540";
+    else if ([resStr isEqualToString:@"480p"]) resStr = @"854x480";
+    args.push_back("--resolution=" + std::string(resStr.UTF8String));
     args.push_back("--aspect=" + std::string(s[@"aspect"] ? s[@"aspect"].UTF8String : "auto"));
     args.push_back("--ios_display_preset=" + std::string(s[@"display_preset"] ? s[@"display_preset"].UTF8String : "retina"));
     args.push_back("--ios_fps_cap=" + std::string(s[@"fps_cap"] ? s[@"fps_cap"].UTF8String : "60"));
