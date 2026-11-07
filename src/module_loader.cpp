@@ -23,7 +23,7 @@ constexpr uint32_t kGlobalFuncTableEnd  = 0x90000000u;
 constexpr size_t   kGlobalFuncTableEntries = (kGlobalFuncTableEnd - kGlobalFuncTableBase) >> 2;
 constexpr size_t   kGlobalFuncTableBytes = kGlobalFuncTableEntries * sizeof(PPCFunc*);
 
-extern "C" PPCFunc** g_global_func_table = nullptr;
+// g_global_func_table is defined in function_dispatcher.cpp
 
 static void InitializeGlobalFunctionTable() {
     if (g_global_func_table != nullptr) {

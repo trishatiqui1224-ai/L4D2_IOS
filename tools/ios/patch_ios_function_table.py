@@ -26,7 +26,7 @@ ANCHOR_DISP_TOP = '''#include <rex/system/function_dispatcher.h>
 NEW_DISP_TOP = '''#include <rex/system/function_dispatcher.h>
 #include <rex/system/thread_state.h>
 
-extern "C" ::PPCFunc** g_global_func_table;
+extern "C" ::PPCFunc** g_global_func_table = nullptr;
 static constexpr uint32_t kGlobalFuncBase = 0x82000000u;
 static constexpr uint32_t kGlobalFuncEnd  = 0x90000000u;
 '''
