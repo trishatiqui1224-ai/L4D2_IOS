@@ -2,6 +2,7 @@
 #include "logging/logger.h"
 
 #include <rex/logging.h>
+#include <rex/types.h>
 #include <rex/image_info.h>
 #include <rex/runtime.h>
 #include <rex/system/function_dispatcher.h>
@@ -93,6 +94,19 @@ extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t ta
         return;
     }
 
+    thread_local uint32_t tls_dispatching_target = 0;
+    if (__builtin_expect(tls_dispatching_target == target_addr, 0)) {
+        LogUnresolvedIndirectCall(target_addr, caller_lr, ctx.r3.u32);
+        ctx.r3.u64 = 0;
+        return;
+    }
+
+    struct ScopedDispatchTarget {
+        uint32_t prev;
+        ScopedDispatchTarget(uint32_t t) : prev(tls_dispatching_target) { tls_dispatching_target = t; }
+        ~ScopedDispatchTarget() { tls_dispatching_target = prev; }
+    } guard(target_addr);
+
     PPCFunc* fn = LookupGlobalFunction(base, target_addr);
     if (__builtin_expect(fn != nullptr, 1)) {
         fn(ctx, base);
@@ -160,6 +174,62 @@ extern "C" void sub_82010AD0(PPCContext& ctx, [[maybe_unused]] uint8_t* base) {
 
 extern "C" void __imp__sub_82010AD0(PPCContext& ctx, uint8_t* base) {
     sub_82010AD0(ctx, base);
+}
+
+// 1. tier0_360:0x1E5 (0x82C18D10) - memalloc setter
+// lis r11, 0x82C6 (-2100953088); stw r3, 0x49B8(r11); blr
+extern "C" void sub_82C18D10(PPCContext& ctx, uint8_t* base) {
+    if (__builtin_expect(base != nullptr, 1)) {
+        *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82C649B8u) = static_cast<uint32_t>(ctx.r3.u32);
+    }
+}
+extern "C" void __imp__sub_82C18D10(PPCContext& ctx, uint8_t* base) {
+    sub_82C18D10(ctx, base);
+}
+
+// 2. tier0_360:0x24B (0x82C1AAC8) - leaf wrapper to sub_82C1A478
+// li r7, 0; b 0x82C1A478
+extern "C" void sub_82C1A478(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" void sub_82C1AAC8(PPCContext& ctx, uint8_t* base) {
+    ctx.r7.s64 = 0;
+    sub_82C1A478(ctx, base);
+}
+extern "C" void __imp__sub_82C1AAC8(PPCContext& ctx, uint8_t* base) {
+    sub_82C1AAC8(ctx, base);
+}
+
+// 3. vstdlib_360:0x00F (0x82E1BEF0) - memalloc setter / fallback to sub_82E1BF04
+// cmpli cr6, 0, r3, 0; beq cr6, 0x82E1BF04; lis r11, 0x82E3 (-2099052544); stw r3, 0x06D0(r11); blr
+extern "C" void sub_82E1BF04(PPCContext& __restrict ctx, uint8_t* base);
+extern "C" void sub_82E1BEF0(PPCContext& ctx, uint8_t* base) {
+    if (ctx.r3.u32 == 0) {
+        sub_82E1BF04(ctx, base);
+        return;
+    }
+    if (__builtin_expect(base != nullptr, 1)) {
+        *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E306D0u) = static_cast<uint32_t>(ctx.r3.u32);
+    }
+}
+extern "C" void __imp__sub_82E1BEF0(PPCContext& ctx, uint8_t* base) {
+    sub_82E1BEF0(ctx, base);
+}
+
+// 4. vstdlib_360:0x012 (0x82E1BF50) - vtable dispatch wrapper
+// lis r11, 0x82E3; lwz r3, 0x06D0(r11); lwz r10, 0(r3); lwz r9, 12(r10); mtctr r9; bctr
+extern "C" void sub_82E1BF50(PPCContext& ctx, uint8_t* base) {
+    if (__builtin_expect(base != nullptr, 1)) {
+        uint32_t r3_val = rex::byte_swap(*reinterpret_cast<const uint32_t*>(base + 0x82E306D0u));
+        uint32_t r10_val = rex::byte_swap(*reinterpret_cast<const uint32_t*>(base + r3_val));
+        uint32_t r9_val = rex::byte_swap(*reinterpret_cast<const uint32_t*>(base + r10_val + 12));
+        ctx.r3.u64 = r3_val;
+        ctx.r10.u64 = r10_val;
+        ctx.r9.u64 = r9_val;
+        ctx.ctr.u64 = r9_val;
+        SafeDispatchIndirect(ctx, base, r9_val, static_cast<uint32_t>(ctx.lr));
+    }
+}
+extern "C" void __imp__sub_82E1BF50(PPCContext& ctx, uint8_t* base) {
+    sub_82E1BF50(ctx, base);
 }
 
 namespace l4d2 {
@@ -299,6 +369,19 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
                       image.image_base, image.image_size);
     }
     L4D2_LOG_INFO("ModuleLoader", "Registered %u compiled non-entrypoint modules into unified function table", registered);
+
+    // 3. Register exported leaf functions (tier0_360, vstdlib_360)
+    auto register_leaf = [&](uint32_t addr, PPCFunc* fn, const char* name) {
+        dispatcher->SetFunction(addr, fn);
+        if (g_global_func_table && addr >= kGlobalFuncTableBase && addr < kGlobalFuncTableEnd) {
+            g_global_func_table[(addr - kGlobalFuncTableBase) >> 2] = fn;
+        }
+        L4D2_LOG_INFO("ModuleLoader", "Registered exported leaf function %s at 0x%08X", name, addr);
+    };
+    register_leaf(0x82C18D10, &sub_82C18D10, "tier0_360:0x1E5 (sub_82C18D10)");
+    register_leaf(0x82C1AAC8, &sub_82C1AAC8, "tier0_360:0x24B (sub_82C1AAC8)");
+    register_leaf(0x82E1BEF0, &sub_82E1BEF0, "vstdlib_360:0x00F (sub_82E1BEF0)");
+    register_leaf(0x82E1BF50, &sub_82E1BF50, "vstdlib_360:0x012 (sub_82E1BF50)");
 }
 
 void ModuleLoader::Shutdown() {

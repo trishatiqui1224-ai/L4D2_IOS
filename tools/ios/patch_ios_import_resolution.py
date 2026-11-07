@@ -110,17 +110,17 @@ NEW = '''    if (record_type == 0) {
         if (target_mod) {
           uint32_t export_addr = target_mod->GetProcAddressByOrdinal(ordinal);
           if (export_addr && function_dispatcher_) {
+            // Always patch guest memory thunk with direct PPC trampoline so guest PPC code and stubs know the target:
+            if (record_slot) {
+              auto* raw_words = reinterpret_cast<rex::be<uint32_t>*>(record_slot);
+              raw_words[0] = 0x3D600000u | ((export_addr >> 16) & 0xFFFFu);
+              raw_words[1] = 0x616B0000u | (export_addr & 0xFFFFu);
+              raw_words[2] = 0x7D6903A6u;
+              raw_words[3] = 0x4E800420u;
+            }
             auto host_fn = function_dispatcher_->GetFunction(export_addr);
             if (host_fn) {
               function_dispatcher_->SetFunction(record_addr, host_fn);
-              // Also patch guest memory thunk with direct PPC trampoline: lis r11, hi; ori r11, lo; mtctr r11; bctr
-              if (record_slot) {
-                auto* raw_words = reinterpret_cast<rex::be<uint32_t>*>(record_slot);
-                raw_words[0] = 0x3D600000u | ((export_addr >> 16) & 0xFFFFu);
-                raw_words[1] = 0x616B0000u | (export_addr & 0xFFFFu);
-                raw_words[2] = 0x7D6903A6u;
-                raw_words[3] = 0x4E800420u;
-              }
               REXLOG_DEBUG("Wired cross-DLL import thunk {}:{:#x} (thunk={:#x} -> {:#x})",
                            base_name, ordinal, record_addr, export_addr);
             } else {

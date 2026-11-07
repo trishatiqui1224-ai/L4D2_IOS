@@ -7,6 +7,7 @@
 extern "C" {
 PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr);
 void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr);
+void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3);
 }
 
 #if defined(__clang__)
@@ -24,14 +25,19 @@ void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, 
             uint32_t insn1 = __builtin_bswap32(*(reinterpret_cast<const uint32_t*>(base + kGuestAddr + 4))); \
             if ((insn0 & 0xFFFF0000u) == 0x3D600000u && (insn1 & 0xFFFF0000u) == 0x616B0000u) { \
                 uint32_t target_guest = ((insn0 & 0xFFFFu) << 16) | (insn1 & 0xFFFFu); \
-                PPCFunc* target_fn = LookupGlobalFunction(base, target_guest); \
-                if (target_fn && target_fn != reinterpret_cast<PPCFunc*>(&name) && target_fn != reinterpret_cast<PPCFunc*>(&__imp__##name)) { \
-                    target_fn(ctx, base); \
+                if (target_guest != kGuestAddr) { \
+                    PPCFunc* target_fn = LookupGlobalFunction(base, target_guest); \
+                    if (target_fn && target_fn != reinterpret_cast<PPCFunc*>(&name) && target_fn != reinterpret_cast<PPCFunc*>(&__imp__##name)) { \
+                        target_fn(ctx, base); \
+                        return; \
+                    } \
+                    SafeDispatchIndirect(ctx, base, target_guest, static_cast<uint32_t>(ctx.lr)); \
                     return; \
                 } \
             } \
         } \
-        SafeDispatchIndirect(ctx, base, kGuestAddr, static_cast<uint32_t>(ctx.lr)); \
+        LogUnresolvedIndirectCall(kGuestAddr, static_cast<uint32_t>(ctx.lr), ctx.r3.u32); \
+        ctx.r3.u64 = 0; \
     } \
     extern "C" __attribute__((weak, noinline)) void name(PPCContext& __restrict ctx, uint8_t* base) { \
         [[clang::musttail]] return __imp__##name(ctx, base); \
@@ -51,14 +57,19 @@ void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, 
             uint32_t insn1 = __builtin_bswap32(*(reinterpret_cast<const uint32_t*>(base + kGuestAddr + 4))); \
             if ((insn0 & 0xFFFF0000u) == 0x3D600000u && (insn1 & 0xFFFF0000u) == 0x616B0000u) { \
                 uint32_t target_guest = ((insn0 & 0xFFFFu) << 16) | (insn1 & 0xFFFFu); \
-                PPCFunc* target_fn = LookupGlobalFunction(base, target_guest); \
-                if (target_fn && target_fn != reinterpret_cast<PPCFunc*>(&name) && target_fn != reinterpret_cast<PPCFunc*>(&__imp__##name)) { \
-                    target_fn(ctx, base); \
+                if (target_guest != kGuestAddr) { \
+                    PPCFunc* target_fn = LookupGlobalFunction(base, target_guest); \
+                    if (target_fn && target_fn != reinterpret_cast<PPCFunc*>(&name) && target_fn != reinterpret_cast<PPCFunc*>(&__imp__##name)) { \
+                        target_fn(ctx, base); \
+                        return; \
+                    } \
+                    SafeDispatchIndirect(ctx, base, target_guest, static_cast<uint32_t>(ctx.lr)); \
                     return; \
                 } \
             } \
         } \
-        SafeDispatchIndirect(ctx, base, kGuestAddr, static_cast<uint32_t>(ctx.lr)); \
+        LogUnresolvedIndirectCall(kGuestAddr, static_cast<uint32_t>(ctx.lr), ctx.r3.u32); \
+        ctx.r3.u64 = 0; \
     } \
     extern "C" __attribute__((weak, noinline)) void name(PPCContext& __restrict ctx, uint8_t* base) { \
         __imp__##name(ctx, base); \
@@ -73,7 +84,8 @@ void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, 
             wired(ctx, base); \
             return; \
         } \
-        SafeDispatchIndirect(ctx, base, kGuestAddr, static_cast<uint32_t>(ctx.lr)); \
+        LogUnresolvedIndirectCall(kGuestAddr, static_cast<uint32_t>(ctx.lr), ctx.r3.u32); \
+        ctx.r3.u64 = 0; \
     } \
     extern "C" inline void name(PPCContext& __restrict ctx, uint8_t* base) { \
         __imp__##name(ctx, base); \

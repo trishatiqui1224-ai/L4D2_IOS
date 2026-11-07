@@ -37,6 +37,20 @@ TARGET_BLOCK = """#define REX_LOOKUP_FUNC(x, y) \\
 REPLACEMENT_BLOCK = """extern "C" {
 PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr);
 void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr);
+void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3);
+}
+
+#define REX_LOOKUP_FUNC(x, y) LookupGlobalFunction((x), (uint32_t)(y))
+
+#define REX_CALL_INDIRECT_FUNC(x)                                                          \\
+  do {                                                                                     \\
+    REX_PROFILE_INDIRECT_DISPATCH();                                                       \\
+    SafeDispatchIndirect(ctx, base, (uint32_t)(x), (uint32_t)ctx.lr);                      \\
+  } while (0)"""
+
+OLD_REPLACEMENT_BLOCK = """extern "C" {
+PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr);
+void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr);
 }
 
 #define REX_LOOKUP_FUNC(x, y) LookupGlobalFunction((x), (uint32_t)(y))
@@ -60,7 +74,7 @@ def status():
     unknown = 0
     for f in files:
         content = normalize(f.read_text(encoding="utf-8"))
-        if normalize(REPLACEMENT_BLOCK) in content:
+        if normalize(REPLACEMENT_BLOCK) in content or normalize(OLD_REPLACEMENT_BLOCK) in content:
             applied += 1
         elif normalize(TARGET_BLOCK) in content:
             clean += 1
@@ -81,6 +95,12 @@ def apply_patch():
             continue
         if TARGET_BLOCK in text:
             new_text = text.replace(TARGET_BLOCK, REPLACEMENT_BLOCK)
+            if is_crlf:
+                new_text = new_text.replace("\n", "\r\n")
+            f.write_bytes(new_text.encode("utf-8"))
+            count += 1
+        elif OLD_REPLACEMENT_BLOCK in text:
+            new_text = text.replace(OLD_REPLACEMENT_BLOCK, REPLACEMENT_BLOCK)
             if is_crlf:
                 new_text = new_text.replace("\n", "\r\n")
             f.write_bytes(new_text.encode("utf-8"))

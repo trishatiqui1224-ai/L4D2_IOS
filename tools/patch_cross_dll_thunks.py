@@ -50,7 +50,19 @@ def patch_generated_recomp_thunks(dry_run=False):
                         f"\t\twired(ctx, base);\n"
                         f"\t\treturn;\n"
                         f"\t}}\n"
-                        f"\tSafeDispatchIndirect(ctx, base, 0x{hex_addr}u, static_cast<uint32_t>(ctx.lr));\n"
+                        f"\tif (base) {{\n"
+                        f"\t\tuint32_t insn0 = __builtin_bswap32(*(reinterpret_cast<const uint32_t*>(base + 0x{hex_addr}u)));\n"
+                        f"\t\tuint32_t insn1 = __builtin_bswap32(*(reinterpret_cast<const uint32_t*>(base + 0x{hex_addr}u + 4)));\n"
+                        f"\t\tif ((insn0 & 0xFFFF0000u) == 0x3D600000u && (insn1 & 0xFFFF0000u) == 0x616B0000u) {{\n"
+                        f"\t\t\tuint32_t target_guest = ((insn0 & 0xFFFFu) << 16) | (insn1 & 0xFFFFu);\n"
+                        f"\t\t\tif (target_guest != 0x{hex_addr}u) {{\n"
+                        f"\t\t\t\tSafeDispatchIndirect(ctx, base, target_guest, static_cast<uint32_t>(ctx.lr));\n"
+                        f"\t\t\t\treturn;\n"
+                        f"\t\t\t}}\n"
+                        f"\t\t}}\n"
+                        f"\t}}\n"
+                        f"\tLogUnresolvedIndirectCall(0x{hex_addr}u, static_cast<uint32_t>(ctx.lr), ctx.r3.u32);\n"
+                        f"\tctx.r3.u64 = 0;\n"
                         f"}}"
                     )
                     modified = True
@@ -94,3 +106,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
