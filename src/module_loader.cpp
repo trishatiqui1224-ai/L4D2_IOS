@@ -239,30 +239,7 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
         g_global_func_table[(0x82010AD0 - kGlobalFuncTableBase) >> 2] = &sub_82010AD0;
     }
 
-    // 2. Pre-load all non-entrypoint DLL XEX2 sections into guest RAM before default.xex runs.
-    // Loads tier0, vstdlib, filesystem and launcher first, so dependencies exist in guest memory.
-    for (const auto& desc : kSourceModules) {
-        if (strcmp(desc.module_name, "default") == 0) continue;
-        L4D2_LOG_INFO("ModuleLoader", "Pre-loading module XEX2 sections into guest RAM: %s", desc.relative_path);
-        auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
-        if (!mod) {
-            std::string game_path = std::string("game:\\") + desc.relative_path;
-            std::replace(game_path.begin(), game_path.end(), '/', '\\');
-            mod = kernel_state->LoadUserModule(game_path, /*call_entry=*/false);
-        }
-        if (!mod) {
-            std::string d_path = std::string("d:\\") + desc.relative_path;
-            std::replace(d_path.begin(), d_path.end(), '/', '\\');
-            mod = kernel_state->LoadUserModule(d_path, /*call_entry=*/false);
-        }
-        if (mod) {
-            L4D2_LOG_INFO("ModuleLoader", "Pre-loaded '%s' [0x%08X..0x%08X]",
-                          desc.module_name, desc.image_base, desc.image_end);
-        } else {
-            L4D2_LOG_WARN("ModuleLoader", "Could not pre-load %s (will load on demand if requested)", desc.relative_path);
-        }
-    }
-
+    // 2. Register all 21 compiled non-entrypoint modules into FunctionDispatcher and global table FIRST
     struct RecompModuleBinding {
         const char* module_id;
         const rex::PPCImageInfo* image;
@@ -320,6 +297,30 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
                       image.image_base, image.image_size);
     }
     L4D2_LOG_INFO("ModuleLoader", "Registered %u compiled non-entrypoint modules into unified function table", registered);
+
+    // 3. Pre-load all non-entrypoint DLL XEX2 sections into guest RAM before default.xex runs.
+    // Loads tier0, vstdlib, filesystem and launcher first, so dependencies exist in guest memory.
+    for (const auto& desc : kSourceModules) {
+        if (strcmp(desc.module_name, "default") == 0) continue;
+        L4D2_LOG_INFO("ModuleLoader", "Pre-loading module XEX2 sections into guest RAM: %s", desc.relative_path);
+        auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
+        if (!mod) {
+            std::string game_path = std::string("game:\\") + desc.relative_path;
+            std::replace(game_path.begin(), game_path.end(), '/', '\\');
+            mod = kernel_state->LoadUserModule(game_path, /*call_entry=*/false);
+        }
+        if (!mod) {
+            std::string d_path = std::string("d:\\") + desc.relative_path;
+            std::replace(d_path.begin(), d_path.end(), '/', '\\');
+            mod = kernel_state->LoadUserModule(d_path, /*call_entry=*/false);
+        }
+        if (mod) {
+            L4D2_LOG_INFO("ModuleLoader", "Pre-loaded '%s' [0x%08X..0x%08X]",
+                          desc.module_name, desc.image_base, desc.image_end);
+        } else {
+            L4D2_LOG_WARN("ModuleLoader", "Could not pre-load %s (will load on demand if requested)", desc.relative_path);
+        }
+    }
 }
 
 void ModuleLoader::Shutdown() {

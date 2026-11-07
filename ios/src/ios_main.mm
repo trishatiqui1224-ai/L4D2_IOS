@@ -154,7 +154,7 @@ static std::vector<std::string> GameArguments(const fs::path& docs, const fs::pa
         "--cache_root=" + (caches / "rexglue").string(),
         "--log_file=" + (docs / "l4d2.log").string(),
         "--log_level=info",
-        "--log_flush_interval=1",
+        "--log_flush_interval=0",
         "--game_data_root=" + gameRoot.string(),
     };
 }
@@ -179,6 +179,13 @@ static void EarlyBootTrace() {
 
     char bootPath[1024];
     snprintf(bootPath, sizeof(bootPath), "%s/Documents/boot.txt", home);
+    char logPath[1024];
+    snprintf(logPath, sizeof(logPath), "%s/Documents/l4d2.log", home);
+
+    l4d2::boot::SetupAltStack();
+    l4d2::boot::Open(bootPath);
+    l4d2::boot::SetLogFilePath(logPath);
+
     int fd = open(bootPath, O_CREAT | O_WRONLY | O_APPEND, 0644);
     if (fd >= 0) {
         char msg[256];
@@ -407,6 +414,7 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     l4d2::ios::SetArgument(texts, "--low_ram_texture_cache=true");
     l4d2::ios::SetArgument(texts, "--ios_readback_max_kb=64");
     l4d2::ios::SetArgument(texts, "--resolution=1280x720");
+    l4d2::ios::SetArgument(texts, "--log_flush_interval=0");
     l4d2::ios::SetArgument(texts, "--ios_xma_starve_reset=false");
     l4d2::ios::SetArgument(texts, "--ios_utility_qos_guest=false");
     l4d2::ios::SetArgument(texts, "--ios_utility_qos=false");
@@ -419,6 +427,11 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     }
     game_argv.push_back(nullptr);
     const int game_argc = static_cast<int>(texts.size());
+
+    // Re-assert signal handlers right before entering dynamic recomp runtime
+    l4d2::boot::SetupAltStack();
+    l4d2::boot::Open((docs / "boot.txt").string());
+    l4d2::boot::SetLogFilePath((docs / "l4d2.log").string());
 
     l4d2::boot::Trace("[main] Calling L4D2_StartGame synchronously inside L4D2_SDLMain...");
     for (int i = 0; i < game_argc; ++i) {

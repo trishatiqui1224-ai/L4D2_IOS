@@ -176,6 +176,7 @@ NEW_MEM_SET = '''bool Memory::SetFunction(uint32_t guest_address, PPCFunc* host_
     if (g_global_func_table) {
       g_global_func_table[(guest_address - 0x82000000u) >> 2] = host_function;
     }
+    return true;
   }
   uint32_t table_address = 0;
 '''

@@ -256,6 +256,14 @@ int L4D2_StartGame(int argc, char** argv) {
     namespace boot = l4d2::boot;
     boot::Trace("---- L4D2_StartGame entrypoint entered ----");
 
+    NSArray<NSString*>* docPaths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    fs::path docs = docPaths.firstObject ? fs::path(docPaths.firstObject.UTF8String) : fs::path("/var/mobile/Documents");
+    boot::SetupAltStack();
+    boot::Open((docs / "boot.txt").string());
+    boot::SetLogFilePath((docs / "l4d2.log").string());
+    l4d2::CrashHandler::Install();
+    l4d2::CrashHandler::SetBootFilePath((docs / "boot.txt").string());
+
     // 1. audio: activating the session
     boot::Trace("audio: activating the session");
     rex::audio::ios::PrepareAudioSession();
@@ -285,9 +293,9 @@ int L4D2_StartGame(int argc, char** argv) {
 
     rex::InitLogging(logPath.c_str(), REXCVAR_GET(log_level) == "off" ? spdlog::level::off : spdlog::level::info);
     if (auto logger = spdlog::default_logger()) {
-        logger->flush_on(spdlog::level::info);
+        logger->flush_on(spdlog::level::trace);
     }
-    spdlog::flush_every(std::chrono::seconds(1));
+    spdlog::flush_every(std::chrono::milliseconds(100));
 
     L4D2_LOG_INFO("iOS", "Left 4 Dead 2 Native Recompilation (build %s %s)", __DATE__, __TIME__);
 
