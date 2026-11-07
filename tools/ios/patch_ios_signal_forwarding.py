@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Forward unhandled Darwin faults and log detailed crash reports (symbolicated PC/LR + guest regs) to boot.txt."""
+"""Forward unhandled Darwin faults and log detailed crash reports (PC, LR, SP, ESR, X0..X28) to boot.txt."""
 import sys
 import pathlib
 
@@ -127,19 +127,7 @@ static void ReportUnhandledSignal(int number, siginfo_t* info, void* context) {
     uintptr_t host_sp = mc->__ss.__sp;
 #endif
     field("pc", host_pc);
-    Dl_info dli_pc{};
-    if (dladdr(reinterpret_cast<void*>(host_pc), &dli_pc) && dli_pc.dli_sname) {
-      append("pc_symbol=");
-      append(dli_pc.dli_sname);
-      append("\\n");
-    }
     field("lr", host_lr);
-    Dl_info dli_lr{};
-    if (dladdr(reinterpret_cast<void*>(host_lr), &dli_lr) && dli_lr.dli_sname) {
-      append("lr_caller_symbol=");
-      append(dli_lr.dli_sname);
-      append("\\n");
-    }
     field("sp", host_sp);
     field("esr", mc->__es.__esr);
     for (int i = 0; i < 29; ++i) {
@@ -148,25 +136,6 @@ static void ReportUnhandledSignal(int number, siginfo_t* info, void* context) {
     }
   }
 #endif
-
-  auto* ts = rex::runtime::ThreadState::Get();
-  if (ts && ts->context()) {
-    auto* ctx = ts->context();
-    append("\\n--- Guest Thread State ---\\n");
-    field("guest_lr", ctx->lr);
-    field("guest_ctr", ctx->ctr.u64);
-    field("guest_r1", ctx->r1.u32);
-    field("guest_r3", ctx->r3.u32);
-    field("guest_r4", ctx->r4.u32);
-    field("guest_r5", ctx->r5.u32);
-    field("guest_r6", ctx->r6.u32);
-    field("guest_r7", ctx->r7.u32);
-    field("guest_r8", ctx->r8.u32);
-    field("guest_r9", ctx->r9.u32);
-    field("guest_r10", ctx->r10.u32);
-    field("guest_r11", ctx->r11.u32);
-    field("guest_r12", ctx->r12.u32);
-  }
   append("================================================================================\\n\\n");
 
   if (signal_report_fd >= 0) {
@@ -219,7 +188,7 @@ NEW_INSTALL = '''    if (sigaction(SIGSEGV, &signal_handler, &original_sigsegv_h
 
 BLOCKS = [
     (FILE, "signal report system headers", "#include <signal.h>\n",
-     "#ifndef _DARWIN_C_SOURCE\n#define _DARWIN_C_SOURCE 1\n#endif\n#include <signal.h>\n#include <fcntl.h>\n#include <unistd.h>\n#include <cstdlib>\n#include <dlfcn.h>\n#include <rex/system/thread_state.h>\n#include <rex/ppc/context.h>\n"),
+     "#include <signal.h>\n#include <fcntl.h>\n#include <unistd.h>\n#include <cstdlib>\n"),
     (FILE, "Darwin unhandled signal forwarding", ANCHOR, FULL_FORWARD + ANCHOR_NEW),
     (FILE, "forward only faults unclaimed by guest handlers", TAIL, TAIL_NEW),
     (FILE, "install SIGABRT and SIGTRAP handlers", ANCHOR_INSTALL, NEW_INSTALL),
