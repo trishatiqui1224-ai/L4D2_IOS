@@ -96,10 +96,29 @@ static void ApplyExtraArguments(const fs::path& file, std::vector<std::string>& 
     }
 }
 
+static void CleanStalePipelineCache(const fs::path& cacheDir) {
+    std::error_code ec;
+    if (!fs::exists(cacheDir, ec) || !fs::is_directory(cacheDir, ec)) {
+        return;
+    }
+    for (const auto& entry : fs::directory_iterator(cacheDir, fs::directory_options::skip_permission_denied, ec)) {
+        if (!entry.is_regular_file(ec)) continue;
+        std::string filename = entry.path().filename().string();
+        if (filename.find(".vkcache") != std::string::npos) {
+            if (filename.rfind("454108D4", 0) != 0) {
+                l4d2::boot::Trace("[Cache] Purging stale non-L4D2 pipeline cache: " + filename);
+                fs::remove(entry.path(), ec);
+            }
+        }
+    }
+}
+
 static std::vector<std::string> GameArguments(const fs::path& docs, const fs::path& gameRoot) {
     const fs::path caches = CachesFolder();
     return {
         "l4d2recomp",
+        "--title_id=454108D4",
+        "--l4d2_title_id=454108D4",
         "--gpu_plugin=xenos",
         "--gpu_backend=vulkan",
         "--render_target_path_vulkan=fbo",
@@ -110,6 +129,7 @@ static std::vector<std::string> GameArguments(const fs::path& docs, const fs::pa
         "--resolution_scale=1",
         "--readback_resolve=fast",
         "--ios_readback_max_kb=64",
+        "--low_ram_texture_cache=true",
         "--occlusion_query_enable=false",
         "--readback_memexport=false",
         "--ios_iso_stream=true",
@@ -369,7 +389,18 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     }
     l4d2::ios::ApplyExtraArguments(docs / "extra_args.txt", texts);
 
+    // Clean stale foreign pipeline caches before launching
+    const fs::path caches = l4d2::ios::CachesFolder();
+    l4d2::ios::CleanStalePipelineCache(caches / "rexglue");
+    l4d2::ios::CleanStalePipelineCache(docs / "cache");
+
     // Hard defaults for stability
+    l4d2::ios::SetArgument(texts, "--title_id=454108D4");
+    l4d2::ios::SetArgument(texts, "--l4d2_title_id=454108D4");
+    l4d2::ios::SetArgument(texts, "--ios_iso_stream=true");
+    l4d2::ios::SetArgument(texts, "--low_ram_texture_cache=true");
+    l4d2::ios::SetArgument(texts, "--ios_readback_max_kb=64");
+    l4d2::ios::SetArgument(texts, "--resolution=1280x720");
     l4d2::ios::SetArgument(texts, "--ios_xma_starve_reset=false");
     l4d2::ios::SetArgument(texts, "--ios_utility_qos_guest=false");
     l4d2::ios::SetArgument(texts, "--ios_utility_qos=false");

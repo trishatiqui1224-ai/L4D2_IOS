@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
 // ---------------------------------------------------------------------------
-//  Color Palette & Styles (Matching NFSCarbon Dark Mode)
+//  Color Palette & Styles (Matching Dark Mode)
 // ---------------------------------------------------------------------------
 static inline UIColor* ColorPureBlack() {
     return [UIColor colorWithRed:0.0 green:0.0 blue:0.0 alpha:1.0]; // #000000
@@ -239,6 +239,8 @@ static const std::vector<SectionDef>& AllSections() {
               {{@"Info (Default)", @"info"}, {@"Debug", @"debug"}, {@"Warning", @"warning"}, {@"Error", @"error"}}},
              {@"export_logs", RowType::kAction, @"Export Logs (.zip)",
               @"Bundles boot.txt, l4d2.log, settings.json, and crash reports into a shareable zip.", @""},
+             {@"clear_cache", RowType::kAction, @"Clear Shader & Pipeline Cache",
+              @"Wipes .vkcache and cached pipelines from Library/Caches to force clean recompilation.", @""},
          }, kTabAdvanced},
     };
     return s_sections;
@@ -264,7 +266,7 @@ static NSString* AboutText() {
 @end
 
 // ---------------------------------------------------------------------------
-//  L4D2LauncherController (1:1 Port of NFSCarbon Inset Grouped UI)
+//  L4D2LauncherController (Inset Grouped UI)
 // ---------------------------------------------------------------------------
 @interface L4D2LauncherController () {
     fs::path _docs;
@@ -447,10 +449,15 @@ static NSString* AboutText() {
             f.read(magic, 20);
             bool ok = (std::memcmp(magic, "MICROSOFT*XBOX*MEDIA", 20) == 0);
             if (!ok) {
-                // Try XGD2 offset 0x0FDA0000
+                // Try XGD2 standard offsets (0x0FDA0000 and 0x0FD90000)
                 f.seekg(0x0FDA0000);
                 f.read(magic, 20);
                 ok = (std::memcmp(magic, "MICROSOFT*XBOX*MEDIA", 20) == 0);
+                if (!ok) {
+                    f.seekg(0x0FD90000);
+                    f.read(magic, 20);
+                    ok = (std::memcmp(magic, "MICROSOFT*XBOX*MEDIA", 20) == 0);
+                }
             }
             if (ok) {
                 _discVerified = true;
@@ -685,6 +692,8 @@ static NSString* AboutText() {
         [self onInstallDlc];
     } else if ([opt.key isEqualToString:@"export_logs"]) {
         [self onExportLogs];
+    } else if ([opt.key isEqualToString:@"clear_cache"]) {
+        [self onClearCache];
     } else if ([opt.key isEqualToString:@"touch_layout_editor"]) {
         [self alert:@"Touch Layout Editor" message:@"The Touch Layout Editor allows positioning, scaling, and adjusting opacity of on-screen touch controls in-game via the gear menu."];
     }
@@ -754,6 +763,25 @@ static NSString* AboutText() {
     }
 }
 
+- (void)onClearCache {
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Clear Pipeline Cache?"
+                                                                   message:@"This deletes all cached Vulkan shaders and pipeline descriptions (.vkcache, .xsh, .xpso). Shaders will cleanly recompile on the next game launch."
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Clear Cache" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
+        NSArray<NSString*>* cachePaths = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+        if (cachePaths.firstObject) {
+            fs::path cacheDir = fs::path(cachePaths.firstObject.UTF8String) / "rexglue";
+            std::error_code ec;
+            fs::remove_all(cacheDir, ec);
+        }
+        std::error_code ec;
+        fs::remove_all(self->_docs / "cache", ec);
+        [self alert:@"Cache Cleared" message:@"Vulkan pipeline and shader caches have been cleared."];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
 @end
 
 // ---------------------------------------------------------------------------
@@ -808,6 +836,12 @@ std::vector<fs::path> FindIsos(const fs::path& documents) {
 std::vector<std::string> SettingsArguments(const fs::path& documents) {
     NSDictionary<NSString*, NSString*>* s = LoadSettings(documents);
     std::vector<std::string> args;
+
+    // Game Profile, Title ID & Streaming
+    args.push_back("--title_id=454108D4");
+    args.push_back("--l4d2_title_id=454108D4");
+    args.push_back("--ios_iso_stream=true");
+    args.push_back("--ios_readback_max_kb=64");
 
     // Display
     NSString* resStr = s[@"resolution"] ? s[@"resolution"] : @"1280x720";

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 tools/extract_iso.py
-Standalone pure-Python Xbox 360 XDVDFS ISO Extractor & XEX Validator for NFS Carbon (454107EC).
+Standalone pure-Python Xbox 360 XDVDFS ISO Extractor & XEX Validator for Left 4 Dead 2 (454108D4).
 Zero dependencies: standard library Python 3.8+ only.
 """
 
@@ -184,9 +184,9 @@ def extract_iso(iso_path, out_dir, solo_xex=False):
         print(f"\n[XEX Info] Title ID: {info['title_id']:08X} (Expected: {EXPECTED_TITLE_ID:08X})")
         print(f"[XEX Info] SHA-256:  {sha}")
         if info["title_id"] == EXPECTED_TITLE_ID:
-            print("[XEX Info] VERIFIED: Valid Need for Speed: Carbon Xbox 360 binary!")
+            print("[XEX Info] VERIFIED: Valid Left 4 Dead 2 Xbox 360 binary!")
         else:
-            print("[XEX Info] NOTE: Title ID differs from retail retail Carbon (454107EC).")
+            print(f"[XEX Info] NOTE: Title ID differs from retail Left 4 Dead 2 ({EXPECTED_TITLE_ID:08X}).")
 
 
 def main():

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Prepares the ReXGlue SDK tree for building the Need for Speed: Carbon iOS port.
+Prepares the ReXGlue SDK tree for building the Left 4 Dead 2 iOS port.
 
     python3 tools/ios/prepare_sdk.py
     python3 tools/ios/prepare_sdk.py --sdk /path/to/rexglue-sdk-ios

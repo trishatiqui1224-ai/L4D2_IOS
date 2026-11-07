@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/preparar_sdk.py - Prepares ReXGlue SDK base for NFS Carbon.
+tools/preparar_sdk.py - Prepares ReXGlue SDK base for Left 4 Dead 2.
 """
 
 import argparse

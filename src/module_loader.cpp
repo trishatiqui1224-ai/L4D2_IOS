@@ -224,6 +224,16 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
         if (strcmp(desc.module_name, "default") == 0) continue;
         L4D2_LOG_INFO("ModuleLoader", "Pre-loading module XEX2 sections into guest RAM: %s", desc.relative_path);
         auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
+        if (!mod) {
+            std::string game_path = std::string("game:\\") + desc.relative_path;
+            std::replace(game_path.begin(), game_path.end(), '/', '\\');
+            mod = kernel_state->LoadUserModule(game_path, /*call_entry=*/false);
+        }
+        if (!mod) {
+            std::string d_path = std::string("d:\\") + desc.relative_path;
+            std::replace(d_path.begin(), d_path.end(), '/', '\\');
+            mod = kernel_state->LoadUserModule(d_path, /*call_entry=*/false);
+        }
         if (mod) {
             L4D2_LOG_INFO("ModuleLoader", "Pre-loaded '%s' [0x%08X..0x%08X]",
                           desc.module_name, desc.image_base, desc.image_end);
