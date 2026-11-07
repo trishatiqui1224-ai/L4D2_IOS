@@ -149,12 +149,12 @@ static void ReportUnhandledSignal(int number, siginfo_t* info, void* context) {
   }
 #endif
 
-  auto* ts = rex::system::ThreadState::Get();
+  auto* ts = rex::runtime::ThreadState::Get();
   if (ts && ts->context()) {
     auto* ctx = ts->context();
     append("\\n--- Guest Thread State ---\\n");
     field("guest_lr", ctx->lr);
-    field("guest_ctr", ctx->ctr);
+    field("guest_ctr", ctx->ctr.u64);
     field("guest_r1", ctx->r1.u32);
     field("guest_r3", ctx->r3.u32);
     field("guest_r4", ctx->r4.u32);
@@ -219,7 +219,7 @@ NEW_INSTALL = '''    if (sigaction(SIGSEGV, &signal_handler, &original_sigsegv_h
 
 BLOCKS = [
     (FILE, "signal report system headers", "#include <signal.h>\n",
-     "#include <signal.h>\n#include <fcntl.h>\n#include <unistd.h>\n#include <cstdlib>\n#include <dlfcn.h>\n#include <rex/system/thread_state.h>\n#include <rex/ppc/context.h>\n"),
+     "#ifndef _DARWIN_C_SOURCE\n#define _DARWIN_C_SOURCE 1\n#endif\n#include <signal.h>\n#include <fcntl.h>\n#include <unistd.h>\n#include <cstdlib>\n#include <dlfcn.h>\n#include <rex/system/thread_state.h>\n#include <rex/ppc/context.h>\n"),
     (FILE, "Darwin unhandled signal forwarding", ANCHOR, FULL_FORWARD + ANCHOR_NEW),
     (FILE, "forward only faults unclaimed by guest handlers", TAIL, TAIL_NEW),
     (FILE, "install SIGABRT and SIGTRAP handlers", ANCHOR_INSTALL, NEW_INSTALL),

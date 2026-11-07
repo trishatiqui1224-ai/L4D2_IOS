@@ -11,6 +11,9 @@
 #include <iomanip>
 
 #if defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE 1
+#endif
 #include <signal.h>
 #include <unistd.h>
 #include <dlfcn.h>
@@ -102,7 +105,7 @@ void CrashHandler::DumpCrashState(int sig, const GuestRegisters* regs, const cha
 #endif
 
     // Dump active guest thread registers from ReXGlue ThreadState if available
-    auto* ts = rex::system::ThreadState::Get();
+    auto* ts = rex::runtime::ThreadState::Get();
     if (ts && ts->context()) {
         auto* ctx = ts->context();
         char gr_buf[256];
