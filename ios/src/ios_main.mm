@@ -389,8 +389,14 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     }
     l4d2::ios::ApplyExtraArguments(docs / "extra_args.txt", texts);
 
-    // Clean stale foreign pipeline caches before launching
+    // Ensure cache and data directories exist
     const fs::path caches = l4d2::ios::CachesFolder();
+    std::error_code ec;
+    fs::create_directories(caches / "rexglue", ec);
+    fs::create_directories(docs / "rex_data", ec);
+    fs::create_directories(docs / "cache", ec);
+
+    // Clean stale foreign pipeline caches before launching
     l4d2::ios::CleanStalePipelineCache(caches / "rexglue");
     l4d2::ios::CleanStalePipelineCache(docs / "cache");
 

@@ -146,6 +146,20 @@ DECLARE_MODULE_SYMBOLS(gameui)
 DECLARE_MODULE_SYMBOLS(vscript)
 DECLARE_MODULE_SYMBOLS(matchmaking)
 
+// Left 4 Dead 2 default.xex entrypoint (0x82010CB8) calls 0x82010AD0 right after startup
+// to verify PAL50 / AVPack video settings. On emulation/iOS, XGetAVPack() returns 0,
+// which triggers an error dialog and causes default.xex to invoke XamLoaderTerminateTitle (exit code 1).
+// Bypassing this check by returning ctx.r3 = 0 ensures the title proceeds directly to loc_82010D0C
+// and initializes the Source Engine DLLs.
+extern "C" void sub_82010AD0(PPCContext& ctx, [[maybe_unused]] uint8_t* base) {
+    L4D2_LOG_INFO("Kernel", "Bypassing PAL50/AVPack video check in default.xex (0x82010AD0 -> r3 = 0)");
+    ctx.r3.u64 = 0;
+}
+
+extern "C" void __imp__sub_82010AD0(PPCContext& ctx, uint8_t* base) {
+    sub_82010AD0(ctx, base);
+}
+
 namespace l4d2 {
 
 namespace fs = std::filesystem;
@@ -216,6 +230,13 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
                 g_global_func_table[(m->guest - kGlobalFuncTableBase) >> 2] = m->host;
             }
         }
+    }
+
+    // Explicitly override 0x82010AD0 (PAL50 / AVPack video check in default.xex)
+    // so default.xex proceeds to CRT initialization and LauncherMain without aborting with exit code 1.
+    dispatcher->SetFunction(0x82010AD0, &sub_82010AD0);
+    if (g_global_func_table) {
+        g_global_func_table[(0x82010AD0 - kGlobalFuncTableBase) >> 2] = &sub_82010AD0;
     }
 
     // 2. Pre-load all non-entrypoint DLL XEX2 sections into guest RAM before default.xex runs.

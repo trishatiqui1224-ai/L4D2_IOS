@@ -240,6 +240,10 @@ foreach(spec ${L4D2_MODULE_SPECS})
     list(APPEND FORCE_LOAD_FLAGS "-Wl,-force_load,$<TARGET_FILE:${_target}>")
 endforeach()
 
+# Combined interface target exposing all 22 recompiled modular libraries
+add_library(l4d2_recomp INTERFACE)
+target_link_libraries(l4d2_recomp INTERFACE ${RECOMP_LIBS})
+
 # =============================================================================
 # =============================================================================
 # 3. Target 1: Pure Minimal UIKit Launcher (Zero Custom LC_LOAD_DYLIBs)
@@ -371,6 +375,7 @@ target_compile_definitions(L4D2Game PRIVATE
 
 target_link_libraries(L4D2Game PRIVATE
     l4d2_headers
+    l4d2_recomp
     ${FORCE_LOAD_FLAGS}
     ${RECOMP_LIBS}
     "${L4D2_MOLTENVK_FW}/MoltenVK"
