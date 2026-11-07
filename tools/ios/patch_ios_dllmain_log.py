@@ -26,11 +26,13 @@ NEW = '''      auto* thread = XThread::GetCurrentThread();
       REXSYS_INFO("Calling DllMain(0x{:08X}) for {}...", module->entry_point(), module->name());
       fflush(stdout);
       fflush(stderr);
+      rex::FlushLogging();
       uint64_t dllmain_ret =
           function_dispatcher_->Execute(thread->thread_state(), module->entry_point(), args, 3);
       REXSYS_INFO("DllMain(0x{:08X}) returned 0x{:08X}", module->entry_point(), static_cast<uint32_t>(dllmain_ret));
       fflush(stdout);
       fflush(stderr);
+      rex::FlushLogging();
       if (static_cast<uint32_t>(dllmain_ret) == 0) {
 '''
 
@@ -40,4 +42,3 @@ BLOCKS = [
 
 if __name__ == "__main__":
     sys.exit(run("ios_dllmain_log", BLOCKS))
-

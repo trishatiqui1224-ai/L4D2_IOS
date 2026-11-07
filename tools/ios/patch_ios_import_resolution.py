@@ -3,6 +3,7 @@
 Resolve cross-DLL XEX2 imports across all loaded modules.
 Wires function import thunks to target PPCFunc* and patches variable imports
 (like g_pMemAlloc in vstdlib_360.dll / launcher_360.dll).
+CRITICAL: Never touches xboxkrnl.exe or xam.xex imports (those are handled natively).
 
 Touches:
     src/system/xex_module.cpp
@@ -70,7 +71,11 @@ NEW = '''    if (record_type == 0) {
       }
 
       // LOCAL PATCH - iOS: resolve cross-DLL variable imports from loaded UserModules (e.g. tier0 -> vstdlib)
-      if (!patched && kernel_state_) {
+      // CRITICAL: NEVER run on xboxkrnl or xam; they are kernel modules handled natively above!
+      std::string_view base_sv(base_name);
+      const bool is_kernel = (base_sv.find("xboxkrnl") != std::string_view::npos ||
+                              base_sv.find("xam") != std::string_view::npos);
+      if (!is_kernel && !patched && kernel_state_) {
         auto target_mod = kernel_state_->GetModule(base_name);
         if (!target_mod) {
           std::string mod_with_ext = std::string(base_name) + ".dll";
@@ -81,8 +86,8 @@ NEW = '''    if (record_type == 0) {
           if (export_addr) {
             *record_slot = export_addr;
             patched = true;
-            REXLOG_INFO("Patched cross-DLL variable import {}:{:#x} -> {:#x}", base_name, ordinal,
-                        export_addr);
+            REXLOG_DEBUG("Patched cross-DLL variable import {}:{:#x} -> {:#x}", base_name, ordinal,
+                         export_addr);
           }
         }
       }
@@ -92,7 +97,11 @@ NEW = '''    if (record_type == 0) {
       import_info.thunk_address = record_addr;
 
       // LOCAL PATCH - iOS: wire cross-DLL function import thunk to target host PPCFunc*
-      if (kernel_state_) {
+      // CRITICAL: NEVER run on xboxkrnl or xam; they are kernel modules handled natively!
+      std::string_view base_sv(base_name);
+      const bool is_kernel = (base_sv.find("xboxkrnl") != std::string_view::npos ||
+                              base_sv.find("xam") != std::string_view::npos);
+      if (!is_kernel && kernel_state_) {
         auto target_mod = kernel_state_->GetModule(base_name);
         if (!target_mod) {
           std::string mod_with_ext = std::string(base_name) + ".dll";
@@ -104,7 +113,18 @@ NEW = '''    if (record_type == 0) {
             auto host_fn = function_dispatcher_->GetFunction(export_addr);
             if (host_fn) {
               function_dispatcher_->SetFunction(record_addr, host_fn);
-              REXLOG_INFO("Wired cross-DLL import thunk {}:{:#x} (thunk={:#x} -> {:#x})",
+              // Also patch guest memory thunk with direct PPC trampoline: lis r11, hi; ori r11, lo; mtctr r11; bctr
+              if (record_slot) {
+                auto* raw_words = reinterpret_cast<rex::be<uint32_t>*>(record_slot);
+                raw_words[0] = 0x3D600000u | ((export_addr >> 16) & 0xFFFFu);
+                raw_words[1] = 0x616B0000u | (export_addr & 0xFFFFu);
+                raw_words[2] = 0x7D6903A6u;
+                raw_words[3] = 0x4E800420u;
+              }
+              REXLOG_DEBUG("Wired cross-DLL import thunk {}:{:#x} (thunk={:#x} -> {:#x})",
+                           base_name, ordinal, record_addr, export_addr);
+            } else {
+              REXLOG_WARN("Cross-DLL import thunk {}:{:#x} (thunk={:#x}) has no host function at target {:#x}",
                           base_name, ordinal, record_addr, export_addr);
             }
           }
@@ -113,8 +133,30 @@ NEW = '''    if (record_type == 0) {
     }
 '''
 
+ANCHOR_SUMMARY = '''  import_libs_.push_back(library_info);
+  REXLOG_DEBUG("created symbols for import library {} with {} imports", base_name,
+               library_info.imports.size());
+
+  return true;
+'''
+
+NEW_SUMMARY = '''  import_libs_.push_back(library_info);
+  std::string_view base_sv_sum(base_name);
+  if (base_sv_sum.find("xboxkrnl") == std::string_view::npos &&
+      base_sv_sum.find("xam") == std::string_view::npos) {
+    REXLOG_INFO("Wired cross-DLL imports for {} ({} total imports)",
+                base_name, library_info.imports.size());
+  } else {
+    REXLOG_DEBUG("created symbols for import library {} with {} imports", base_name,
+                 library_info.imports.size());
+  }
+
+  return true;
+'''
+
 BLOCKS = [
     (FILE, "cross-DLL and kernel import thunk & variable resolution", ANCHOR, NEW),
+    (FILE, "summary log for cross-DLL imports", ANCHOR_SUMMARY, NEW_SUMMARY),
 ]
 
 if __name__ == "__main__":

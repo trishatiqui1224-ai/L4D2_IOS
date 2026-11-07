@@ -1,6 +1,7 @@
 #include "module_loader.h"
 #include "logging/logger.h"
 
+#include <rex/logging.h>
 #include <rex/image_info.h>
 #include <rex/runtime.h>
 #include <rex/system/function_dispatcher.h>
@@ -82,6 +83,7 @@ extern "C" void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_
         fclose(bf);
     }
     l4d2::log::Logger::Instance().Flush();
+    rex::FlushLogging();
 }
 
 extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr) {
@@ -395,6 +397,7 @@ uint32_t ModuleLoader::XexLoadImage(const char* module_path, uint32_t flags, uin
 
     L4D2_LOG_INFO("ModuleLoader", "XexLoadImage: Loaded '%s' mapped at [0x%08X - 0x%08X]",
                   mod.name.c_str(), mod.image_base, mod.image_end);
+    rex::FlushLogging();
 
     *module_handle = reinterpret_cast<void*>(static_cast<uintptr_t>(mod.image_base));
     return STATUS_SUCCESS;

@@ -154,7 +154,7 @@ static std::vector<std::string> GameArguments(const fs::path& docs, const fs::pa
         "--cache_root=" + (caches / "rexglue").string(),
         "--log_file=" + (docs / "l4d2.log").string(),
         "--log_level=info",
-        "--log_flush_interval=0",
+        "--log_flush_interval=1",
         "--game_data_root=" + gameRoot.string(),
     };
 }
@@ -417,7 +417,7 @@ static int L4D2_SDLMain(int argc, char* argv[]) {
     l4d2::ios::SetArgument(texts, "--low_ram_texture_cache=true");
     l4d2::ios::SetArgument(texts, "--ios_readback_max_kb=64");
     l4d2::ios::SetArgument(texts, "--resolution=1280x720");
-    l4d2::ios::SetArgument(texts, "--log_flush_interval=0");
+    l4d2::ios::SetArgument(texts, "--log_flush_interval=1");
     l4d2::ios::SetArgument(texts, "--ios_xma_starve_reset=false");
     l4d2::ios::SetArgument(texts, "--ios_utility_qos_guest=false");
     l4d2::ios::SetArgument(texts, "--ios_utility_qos=false");

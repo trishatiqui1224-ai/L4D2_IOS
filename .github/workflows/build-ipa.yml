@@ -96,6 +96,8 @@ jobs:
           python3 tools/make_stubs.py
           python3 tools/patch_safe_indirect_dispatch.py --apply
           python3 tools/patch_safe_indirect_dispatch.py --status
+          python3 tools/patch_cross_dll_thunks.py --apply
+          python3 tools/patch_cross_dll_thunks.py --status
 
       - name: Verify Static Multi-Module Dispatcher Coverage
         run: |
@@ -109,6 +111,8 @@ jobs:
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_relative_paths.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_function_table.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_signal_forwarding.py --status
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_import_resolution.py --status
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_dllmain_log.py --status
           if [ -d "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" ]; then
             (cd "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" && git tag -f v0.10.0 HEAD 2>/dev/null || true)
           fi
