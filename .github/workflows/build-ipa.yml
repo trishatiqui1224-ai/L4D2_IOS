@@ -64,7 +64,7 @@ jobs:
           path: |
             ${{ github.workspace }}/../rexglue-sdk-ios
             ~/.nfsc-ios
-          key: ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-l4d2-p2
+          key: ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-l4d2-p3
           restore-keys: |
             ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-
 

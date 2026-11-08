@@ -45,9 +45,7 @@ namespace rex::system {
 static std::unordered_set<std::string> s_dllmain_called_modules;
 '''
 
-ANCHOR_PRELOAD = '''  // loading_paths_ serializes concurrent loaders of the same path; we
-  // can't hold the global lock across LoadFromFile or DllMain ATTACH.
-  {
+ANCHOR_PRELOAD = '''  {
     auto global_lock = global_critical_region_.Acquire();
     for (auto& existing_module : user_modules_) {
       if (existing_module->path() == path) {
@@ -55,6 +53,12 @@ ANCHOR_PRELOAD = '''  // loading_paths_ serializes concurrent loaders of the sam
       }
     }
     auto [it, inserted] = loading_paths_.emplace(path);
+    (void)it;
+    if (!inserted) {
+      REXSYS_WARN("LoadUserModule: '{}' already being loaded by another thread", path);
+      return nullptr;
+    }
+  }
 '''
 
 NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute DllMain on active guest thread for preloaded modules
