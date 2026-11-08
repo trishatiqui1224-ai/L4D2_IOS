@@ -59,6 +59,14 @@ def main():
     else:
         print("[generate_code] Generated sources already present.")
 
+    try:
+        from patch_ppc_status_ops import main as patch_ppc_status_ops
+        if patch_ppc_status_ops() != 0:
+            sys.exit(1)
+    except Exception as e:
+        print(f"[generate_code] PPC status-op patch failed: {e}")
+        sys.exit(1)
+
 if __name__ == "__main__":
     main()
 
