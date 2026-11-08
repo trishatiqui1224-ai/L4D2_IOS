@@ -14,25 +14,36 @@ from patch_engine import run
 
 FILE = "src/system/kernel_state.cpp"
 
-ANCHOR = '''      auto* thread = XThread::GetCurrentThread();
+ANCHOR_TOP = '''#include <rex/system/xtimer.h>
+
+namespace rex::system {
+'''
+
+NEW_TOP = '''#include <rex/system/xtimer.h>
+
+#if defined(__GNUC__) || defined(__clang__)
+extern "C" __attribute__((weak)) void DumpDispatchRingBuffer();
+#else
+extern "C" void DumpDispatchRingBuffer();
+#endif
+
+namespace rex::system {
+'''
+
+ANCHOR_EXEC = '''      auto* thread = XThread::GetCurrentThread();
       uint64_t args[] = {module->hmodule_ptr(), 1 /* DLL_PROCESS_ATTACH */, 0};
       uint64_t dllmain_ret =
           function_dispatcher_->Execute(thread->thread_state(), module->entry_point(), args, 3);
       if (static_cast<uint32_t>(dllmain_ret) == 0) {
 '''
 
-NEW = '''      auto* thread = XThread::GetCurrentThread();
+NEW_EXEC = '''      auto* thread = XThread::GetCurrentThread();
       uint64_t args[] = {module->hmodule_ptr(), 1 /* DLL_PROCESS_ATTACH */, 0};
       REXSYS_INFO("Calling DllMain(0x{:08X}) for {}...", module->entry_point(), module->name());
       fflush(stdout);
       fflush(stderr);
       rex::FlushLogging();
 
-#if defined(__GNUC__) || defined(__clang__)
-      extern "C" __attribute__((weak)) void DumpDispatchRingBuffer();
-#else
-      extern "C" void DumpDispatchRingBuffer();
-#endif
       std::atomic<bool> watchdog_done{false};
       std::thread watchdog([&]() {
         for (int sec = 1; sec <= 10; ++sec) {
@@ -66,7 +77,8 @@ NEW = '''      auto* thread = XThread::GetCurrentThread();
 '''
 
 BLOCKS = [
-    (FILE, "log Calling DllMain and returned with flush", ANCHOR, NEW),
+    (FILE, "declare DumpDispatchRingBuffer at file scope", ANCHOR_TOP, NEW_TOP),
+    (FILE, "log Calling DllMain with watchdog and returned with flush", ANCHOR_EXEC, NEW_EXEC),
 ]
 
 if __name__ == "__main__":
