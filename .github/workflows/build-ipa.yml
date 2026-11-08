@@ -247,13 +247,13 @@ jobs:
             echo "ERROR: Expected 10,000+ compiled PPC functions in L4D2Game, found $FUNC_COUNT!"
             exit 1
           fi
-          for symbol in xstart sub_836940A0 l4d2_tier0_PPCImageConfig l4d2_vstdlib_PPCImageConfig l4d2_launcher_PPCImageConfig; do
+          for symbol in sub_82010CB8 sub_82C246E0 sub_82E21480 sub_836A2B40 sub_836940A0 l4d2_tier0_PPCImageConfig l4d2_vstdlib_PPCImageConfig l4d2_launcher_PPCImageConfig; do
             if ! nm -gU "$GAME_BIN" | grep -Fq "$symbol"; then
               echo "ERROR: Required startup function or module config $symbol is missing from L4D2Game."
               exit 1
             fi
           done
-          echo "[CI] Verified tier0/vstdlib/launcher entry functions and module configs are linked into L4D2Game."
+          echo "[CI] Verified default/tier0/vstdlib/launcher entry functions and module configs are linked into L4D2Game."
           echo "[CI] Verification PASSED: Real static-recompiled IPA verified ($IPA_BYTES bytes, $FUNC_COUNT PPC functions)."
           rm -rf /tmp/ipa_inspect
 
