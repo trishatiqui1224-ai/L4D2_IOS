@@ -208,8 +208,8 @@ protected:
         // Pass 1: Pre-load all Source Engine recompiled modules with call_entry=false.
         // This ensures all 17 DLL images are mapped, base relocations applied, and cross-DLL
         // imports/variables wired before any DllMain executes in Pass 2.
-        if (runtime_ && runtime_->kernel_state()) {
-            l4d2::ModuleLoader::Instance().PreloadSourceModules(runtime_->kernel_state());
+        if (auto* app_runtime = runtime(); app_runtime && app_runtime->kernel_state()) {
+            l4d2::ModuleLoader::Instance().PreloadSourceModules(app_runtime->kernel_state());
         }
     }
 
