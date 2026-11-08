@@ -98,6 +98,8 @@ jobs:
           python3 tools/patch_safe_indirect_dispatch.py --status
           python3 tools/patch_cross_dll_thunks.py --apply
           python3 tools/patch_cross_dll_thunks.py --status
+          python3 tools/patch_unique_entry_points.py --apply
+          python3 tools/patch_unique_entry_points.py --status
 
       - name: Verify Static Multi-Module Dispatcher Coverage
         run: |

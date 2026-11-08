@@ -562,10 +562,16 @@ void ModuleLoader::PreloadSourceModules(rex::system::KernelState* kernel_state) 
     for (const auto& desc : kSourceModules) {
         if (strcmp(desc.module_name, "default") == 0) continue;
 
-        auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
+        std::string p = desc.relative_path;
+        std::replace(p.begin(), p.end(), '/', '\\');
+        std::string guest_path = "d:\\" + p;
+        auto mod = kernel_state->LoadUserModule(guest_path, /*call_entry=*/false);
+        if (!mod) {
+            mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
+        }
         if (mod) {
             L4D2_LOG_INFO("ModuleLoader", "Pass 1: Preloaded '%s' (%s) at 0x%08X - imports wired",
-                          desc.module_name, desc.relative_path, desc.image_base);
+                          desc.module_name, guest_path.c_str(), desc.image_base);
         } else {
             L4D2_LOG_DEBUG("ModuleLoader", "Pass 1: Module '%s' will be loaded on demand", desc.module_name);
         }
