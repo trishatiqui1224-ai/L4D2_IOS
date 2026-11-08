@@ -64,7 +64,7 @@ jobs:
           path: |
             ${{ github.workspace }}/../rexglue-sdk-ios
             ~/.nfsc-ios
-          key: ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-l4d2-p1
+          key: ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-l4d2-p2
           restore-keys: |
             ${{ runner.os }}-rexglue-sdk-v0.10.0-mvk-1.4.1-
 
@@ -100,6 +100,8 @@ jobs:
           python3 tools/patch_cross_dll_thunks.py --status
           python3 tools/patch_unique_entry_points.py --apply
           python3 tools/patch_unique_entry_points.py --status
+          python3 tools/patch_tier0_null_check.py --apply
+          python3 tools/patch_tier0_null_check.py --status
 
       - name: Verify Static Multi-Module Dispatcher Coverage
         run: |
@@ -115,6 +117,7 @@ jobs:
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_signal_forwarding.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_import_resolution.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_dllmain_log.py --status
+          L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_xex_load.py --status
           if [ -d "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" ]; then
             (cd "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" && git tag -f v0.10.0 HEAD 2>/dev/null || true)
           fi
