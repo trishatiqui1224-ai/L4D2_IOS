@@ -39,7 +39,21 @@ ANCHOR = '''u32 XexLoadImage_entry(mapped_string module_name, u32 module_flags, 
 
   if (!hmodule) {
     auto user_module = REX_KERNEL_STATE()->LoadUserModule(module_name.value());
-'''
+    if (user_module) {
+      // Released by the last XexUnloadImage call.
+      auto user_module_raw = user_module.release();
+      hmodule = user_module_raw->hmodule_ptr();
+      auto lock = rex::thread::global_critical_region::AcquireDirect();
+      auto ldr_data = REX_KERNEL_MEMORY()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule);
+      ldr_data->load_count++;
+      result = X_STATUS_SUCCESS;
+    }
+  }
+
+  *hmodule_ptr = hmodule;
+
+  return result;
+}'''
 
 PATCHED = '''u32 XexLoadImage_entry(mapped_string module_name, u32 module_flags, u32 min_version,
                        mapped_u32 hmodule_ptr) {
@@ -74,7 +88,11 @@ PATCHED = '''u32 XexLoadImage_entry(mapped_string module_name, u32 module_flags,
       result = X_STATUS_SUCCESS;
     }
   }
-'''
+
+  *hmodule_ptr = hmodule;
+
+  return result;
+}'''
 
 BLOCKS = [
     (FILE, "invoke LoadUserModule with call_entry=true for preloaded modules", ANCHOR, PATCHED),
