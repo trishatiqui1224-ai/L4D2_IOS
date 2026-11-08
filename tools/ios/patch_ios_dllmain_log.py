@@ -20,6 +20,8 @@ namespace rex::system {
 '''
 
 NEW_TOP = '''#include <rex/system/xtimer.h>
+#include <condition_variable>
+#include <mutex>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define REX_CALLBACK_EXPORT __attribute__((visibility("default")))
@@ -53,15 +55,20 @@ NEW_EXEC = '''      auto* thread = XThread::GetCurrentThread();
       fflush(stderr);
       rex::FlushLogging();
 
-      std::atomic<bool> watchdog_done{false};
-      std::thread watchdog([&]() {
+      auto watchdog_done = std::make_shared<std::atomic<bool>>(false);
+      auto watchdog_mutex = std::make_shared<std::mutex>();
+      auto watchdog_cv = std::make_shared<std::condition_variable>();
+      std::thread watchdog([watchdog_done, watchdog_mutex, watchdog_cv,
+                            entry = module->entry_point(), name = module->name()]() {
+        std::unique_lock<std::mutex> lock(*watchdog_mutex);
         for (int sec = 1; sec <= 10; ++sec) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-          if (watchdog_done.load(std::memory_order_relaxed)) {
+          if (watchdog_cv->wait_for(lock, std::chrono::seconds(1), [&] {
+                return watchdog_done->load(std::memory_order_acquire);
+              })) {
             return;
           }
           REXSYS_WARN("[WATCHDOG] DllMain(0x{:08X}) for {} still running after {}s...",
-                      module->entry_point(), module->name(), sec);
+                      entry, name, sec);
           if (s_dump_ring_buffer_fn) {
             s_dump_ring_buffer_fn();
           }
@@ -73,7 +80,11 @@ NEW_EXEC = '''      auto* thread = XThread::GetCurrentThread();
 
       uint64_t dllmain_ret =
           function_dispatcher_->Execute(thread->thread_state(), module->entry_point(), args, 3);
-      watchdog_done.store(true, std::memory_order_relaxed);
+      {
+        std::lock_guard<std::mutex> lock(*watchdog_mutex);
+        watchdog_done->store(true, std::memory_order_release);
+      }
+      watchdog_cv->notify_one();
       if (watchdog.joinable()) {
         watchdog.join();
       }

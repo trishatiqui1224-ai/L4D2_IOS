@@ -20,6 +20,8 @@ void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, 
 void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3);
 void RecordDispatchBreadcrumb(uint32_t target_addr, uint32_t caller_lr);
 void DumpDispatchRingBuffer();
+void sub_82015D78(PPCContext& ctx, uint8_t* base);
+void sub_82011120(PPCContext& ctx, uint8_t* base);
 
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak)) void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);
@@ -59,6 +61,7 @@ public:
     static void RegisterRecompiledModules(rex::system::KernelState* kernel_state);
 
     void Init(const std::string& game_root, const std::string& save_root);
+    void PreloadSourceModules(rex::system::KernelState* kernel_state);
     void Shutdown();
 
     // Emulated XEX2 module loader

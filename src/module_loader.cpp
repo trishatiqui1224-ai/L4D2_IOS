@@ -172,6 +172,18 @@ extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t ta
         ~ScopedDispatchTarget() { tls_dispatching_target = prev; }
     } guard(target_addr);
 
+    // Safety translation: If a rebased module calls an unrelocated address in 0x82010000..0x8203FFFF
+    if (caller_lr >= 0x82C00000 && target_addr >= 0x82010000 && target_addr < 0x82040000) {
+        const auto* mod = l4d2::ModuleLoader::Instance().FindModuleByAddress(caller_lr);
+        if (mod && mod->image_base > 0x82000000) {
+            uint32_t rebased_target = target_addr - 0x82000000 + mod->image_base;
+            PPCFunc* rebased_fn = LookupGlobalFunction(base, rebased_target);
+            if (rebased_fn) {
+                target_addr = rebased_target;
+            }
+        }
+    }
+
     PPCFunc* fn = LookupGlobalFunction(base, target_addr);
     if (__builtin_expect(fn != nullptr, 1)) {
         fn(ctx, base);
@@ -239,6 +251,28 @@ extern "C" void sub_82010AD0(PPCContext& ctx, [[maybe_unused]] uint8_t* base) {
 
 extern "C" void __imp__sub_82010AD0(PPCContext& ctx, uint8_t* base) {
     sub_82010AD0(ctx, base);
+}
+
+// Left 4 Dead 2 default.xex module listener notifications (0x82011120 and 0x82015D78)
+// On retail Xbox 360, default.xex registers notification listeners during startup.
+// In the recompiled environment, an uninitialized or circular listener node at 0x8202005C
+// causes an unthrottled infinite spin loop at ~85M calls/sec between 0x82011170 and 0x82015D78.
+// Short-circuiting both ensures default.xex advances cleanly without starving the main runloop.
+extern "C" void sub_82015D78(PPCContext& ctx, [[maybe_unused]] uint8_t* base) {
+    ctx.r3.u64 = 1;
+}
+
+extern "C" void __imp__sub_82015D78(PPCContext& ctx, uint8_t* base) {
+    sub_82015D78(ctx, base);
+}
+
+extern "C" void sub_82011120(PPCContext& ctx, [[maybe_unused]] uint8_t* base) {
+    L4D2_LOG_INFO("Kernel", "Bypassing NotifyModuleListeners in default.xex (0x82011120)");
+    ctx.r3.u64 = 0;
+}
+
+extern "C" void __imp__sub_82011120(PPCContext& ctx, uint8_t* base) {
+    sub_82011120(ctx, base);
 }
 
 // 1. tier0_360:0x1E5 (0x82C18D10) - memalloc setter
@@ -394,6 +428,29 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
             // 0x82E306D0 holds pointer to IMemAlloc (0x82C406D0)
             *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E306D0u) = 0x82C406D0u;
 
+            // Apply guest data relocations across all rebased module ranges
+            for (const auto& desc : kSourceModules) {
+                if (desc.image_base > 0x82000000 && desc.image_end > desc.image_base) {
+                    const uint32_t delta = desc.image_base - 0x82000000;
+                    const uint32_t span = desc.image_end - desc.image_base;
+                    uint8_t* start = base + desc.image_base;
+                    size_t word_count = span / 4;
+                    auto* words = reinterpret_cast<rex::be<uint32_t>*>(start);
+                    uint32_t count = 0;
+                    for (size_t i = 0; i < word_count; ++i) {
+                        uint32_t val = words[i];
+                        if (val >= 0x82000000 && val < 0x82000000 + span) {
+                            words[i] = val + delta;
+                            ++count;
+                        }
+                    }
+                    if (count > 0) {
+                        L4D2_LOG_INFO("ModuleLoader", "Relocated %u data pointers in guest memory for %s at 0x%08X",
+                                      count, desc.module_name, desc.image_base);
+                    }
+                }
+            }
+
             L4D2_LOG_INFO("ModuleLoader", "Pre-initialized tier0/vstdlib allocator pointers and cross-DLL variables");
         }
     }
@@ -485,6 +542,8 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
     register_leaf(0x82C1AAC8, &sub_82C1AAC8, "tier0_360:0x24B (sub_82C1AAC8)");
     register_leaf(0x82E1BEF0, &sub_82E1BEF0, "vstdlib_360:0x00F (sub_82E1BEF0)");
     register_leaf(0x82E1BF50, &sub_82E1BF50, "vstdlib_360:0x012 (sub_82E1BF50)");
+    register_leaf(0x82015D78, &sub_82015D78, "default:0x82015D78 (sub_82015D78)");
+    register_leaf(0x82011120, &sub_82011120, "default:0x82011120 (NotifyModuleListeners)");
 }
 
 void ModuleLoader::Shutdown() {
@@ -494,6 +553,25 @@ void ModuleLoader::Shutdown() {
         mod.named_exports.clear();
         mod.ordinal_exports.clear();
     }
+}
+
+void ModuleLoader::PreloadSourceModules(rex::system::KernelState* kernel_state) {
+    if (!kernel_state) return;
+
+    L4D2_LOG_INFO("ModuleLoader", "Pass 1: Pre-loading all Source Engine modules and wiring cross-DLL imports...");
+    for (const auto& desc : kSourceModules) {
+        if (strcmp(desc.module_name, "default") == 0) continue;
+
+        auto mod = kernel_state->LoadUserModule(desc.relative_path, /*call_entry=*/false);
+        if (mod) {
+            L4D2_LOG_INFO("ModuleLoader", "Pass 1: Preloaded '%s' (%s) at 0x%08X - imports wired",
+                          desc.module_name, desc.relative_path, desc.image_base);
+        } else {
+            L4D2_LOG_DEBUG("ModuleLoader", "Pass 1: Module '%s' will be loaded on demand", desc.module_name);
+        }
+    }
+    L4D2_LOG_INFO("ModuleLoader", "Pass 1 complete: All modules pre-mapped and cross-DLL imports wired");
+    rex::FlushLogging();
 }
 
 std::string ModuleLoader::ResolveVFSPath(const std::string& guest_path, bool write_access) {

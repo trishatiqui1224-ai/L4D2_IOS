@@ -204,6 +204,13 @@ protected:
         std::string game_root = rex::cvar::GetFlagByName("game_data_root");
         std::string save_root = rex::cvar::GetFlagByName("user_data_root");
         l4d2::ModuleLoader::Instance().Init(game_root, save_root);
+
+        // Pass 1: Pre-load all Source Engine recompiled modules with call_entry=false.
+        // This ensures all 17 DLL images are mapped, base relocations applied, and cross-DLL
+        // imports/variables wired before any DllMain executes in Pass 2.
+        if (runtime_ && runtime_->kernel_state()) {
+            l4d2::ModuleLoader::Instance().PreloadSourceModules(runtime_->kernel_state());
+        }
     }
 
     void OnShutdown() override {

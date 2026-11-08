@@ -154,9 +154,53 @@ NEW_SUMMARY = '''  import_libs_.push_back(library_info);
   return true;
 '''
 
+ANCHOR_RELOC = '''  // Setup memory protection.
+  for (uint32_t i = 0, page = 0; i < sec_header->page_descriptor_count; i++) {
+    // Byteswap the bitfield manually.
+    xex2_page_descriptor desc;
+'''
+
+NEW_RELOC = '''  // LOCAL PATCH - iOS: apply base relocations to data sections of rebased modules
+  const uint32_t orig_base = sec_header->load_address;
+  if (base_address_ != orig_base && orig_base != 0) {
+    const uint32_t delta = base_address_ - orig_base;
+    const uint32_t image_span = sec_header->image_size;
+    uint32_t relocated_count = 0;
+    for (uint32_t i = 0, page = 0; i < sec_header->page_descriptor_count; i++) {
+      xex2_page_descriptor desc;
+      desc.value = rex::byte_swap(sec_header->page_descriptors[i].value);
+      if (desc.info == XEX_SECTION_READONLY_DATA || desc.info == XEX_SECTION_DATA) {
+        uint32_t page_addr = base_address_ + (page * page_size);
+        uint32_t page_bytes = desc.page_count * page_size;
+        uint8_t* mem_ptr = memory()->TranslateVirtual(page_addr);
+        if (mem_ptr) {
+          auto* words = reinterpret_cast<rex::be<uint32_t>*>(mem_ptr);
+          size_t word_count = page_bytes / 4;
+          for (size_t w = 0; w < word_count; ++w) {
+            uint32_t val = words[w];
+            if (val >= orig_base && val < orig_base + image_span) {
+              words[w] = val + delta;
+              ++relocated_count;
+            }
+          }
+        }
+      }
+      page += desc.page_count;
+    }
+    REXLOG_INFO("Applied base relocations for {} (orig=0x{:08X}, new=0x{:08X}, delta=+0x{:08X}): {} pointers updated",
+                name_, orig_base, base_address_, delta, relocated_count);
+  }
+
+  // Setup memory protection.
+  for (uint32_t i = 0, page = 0; i < sec_header->page_descriptor_count; i++) {
+    // Byteswap the bitfield manually.
+    xex2_page_descriptor desc;
+'''
+
 BLOCKS = [
     (FILE, "cross-DLL and kernel import thunk & variable resolution", ANCHOR, NEW),
     (FILE, "summary log for cross-DLL imports", ANCHOR_SUMMARY, NEW_SUMMARY),
+    (FILE, "apply base relocations to data sections of rebased modules", ANCHOR_RELOC, NEW_RELOC),
 ]
 
 if __name__ == "__main__":
