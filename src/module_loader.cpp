@@ -10,6 +10,7 @@
 #include <rex/system/user_module.h>
 
 #include <algorithm>
+#include <atomic>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -87,7 +88,71 @@ extern "C" void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_
     rex::FlushLogging();
 }
 
+extern "C" {
+__attribute__((visibility("default"))) std::atomic<uint32_t> g_current_ppc_fn{0};
+__attribute__((visibility("default"))) std::atomic<uint32_t> g_current_ppc_lr{0};
+__attribute__((visibility("default"))) std::atomic<uint64_t> g_ppc_call_count{0};
+__attribute__((visibility("default"))) std::atomic<uint32_t> g_ppc_ring_idx{0};
+__attribute__((visibility("default"))) uint32_t g_ppc_call_ring[32] = {0};
+__attribute__((visibility("default"))) uint32_t g_ppc_lr_ring[32] = {0};
+
+__attribute__((visibility("default"))) void RecordDispatchBreadcrumb(uint32_t target_addr, uint32_t caller_lr) {
+    g_current_ppc_fn.store(target_addr, std::memory_order_relaxed);
+    g_current_ppc_lr.store(caller_lr, std::memory_order_relaxed);
+    g_ppc_call_count.fetch_add(1, std::memory_order_relaxed);
+    uint32_t idx = g_ppc_ring_idx.fetch_add(1, std::memory_order_relaxed) & 31;
+    g_ppc_call_ring[idx] = target_addr;
+    g_ppc_lr_ring[idx] = caller_lr;
+}
+
+__attribute__((visibility("default"))) void DumpDispatchRingBuffer() {
+    uint32_t cur_fn = g_current_ppc_fn.load(std::memory_order_relaxed);
+    uint32_t cur_lr = g_current_ppc_lr.load(std::memory_order_relaxed);
+    uint64_t count  = g_ppc_call_count.load(std::memory_order_relaxed);
+    uint32_t head   = g_ppc_ring_idx.load(std::memory_order_relaxed);
+
+    std::string mod_fn = l4d2::ModuleLoader::Instance().SymbolicateAddress(cur_fn);
+    std::string mod_lr = l4d2::ModuleLoader::Instance().SymbolicateAddress(cur_lr);
+
+    char buf[1024];
+    snprintf(buf, sizeof(buf),
+             "[WATCHDOG] Total PPC calls: %llu | Last Target: 0x%08X (%s) | Last LR: 0x%08X (%s)",
+             (unsigned long long)count, cur_fn, mod_fn.c_str(), cur_lr, mod_lr.c_str());
+    L4D2_LOG_WARN("WATCHDOG", "%s", buf);
+
+    FILE* bf = nullptr;
+    const char* bp = std::getenv("L4D2_BOOT_PATH");
+    if (!bp) bp = std::getenv("NFSMW_SIGNAL_REPORT");
+    if (bp) bf = fopen(bp, "a");
+    if (!bf) bf = fopen("boot.txt", "a");
+    if (bf) {
+        fprintf(bf, "%s\n", buf);
+        fprintf(bf, "[WATCHDOG] Ring buffer of last 32 indirect calls (newest to oldest):\n");
+        for (uint32_t i = 0; i < 32; ++i) {
+            uint32_t ring_idx = (head - 1 - i) & 31;
+            uint32_t target = g_ppc_call_ring[ring_idx];
+            uint32_t lr = g_ppc_lr_ring[ring_idx];
+            if (target != 0) {
+                std::string s_t = l4d2::ModuleLoader::Instance().SymbolicateAddress(target);
+                std::string s_lr = l4d2::ModuleLoader::Instance().SymbolicateAddress(lr);
+                fprintf(bf, "  [%02u] Target: 0x%08X (%s), LR: 0x%08X (%s)\n",
+                        i, target, s_t.c_str(), lr, s_lr.c_str());
+            }
+        }
+        fflush(bf);
+#if !defined(_WIN32)
+        fsync(fileno(bf));
+#endif
+        fclose(bf);
+    }
+    l4d2::log::Logger::Instance().Flush();
+    rex::FlushLogging();
+}
+}
+
 extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr) {
+    RecordDispatchBreadcrumb(target_addr, caller_lr);
+
     if (__builtin_expect(target_addr == 0, 0)) {
         LogUnresolvedIndirectCall(target_addr, caller_lr, ctx.r3.u32);
         ctx.r3.u64 = 0;
@@ -294,6 +359,39 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
 
     // 1. Initialize unified global function table (448 MB virtual memory covering 0x82000000..0x90000000)
     InitializeGlobalFunctionTable();
+
+    // 0. Pre-initialize critical cross-DLL variables and default allocator pointers in guest memory
+    if (auto* mem = kernel_state->memory()) {
+        uint8_t* base = mem->virtual_membase();
+        if (base) {
+            // tier0_360.dll allocator pointers:
+            // 0x82C406CC holds &g_DefaultMemAlloc (0x82C406D0)
+            // 0x82C406D0 holds &CStdMemAlloc::vtable (0x82C00BF4)
+            // 0x82C00BF4 / 0x82C00BF8 holds CStdMemAlloc::Alloc (0x82C16CD0)
+            // 0x82C42EB0 holds fallback allocator function sub_82C13FF0 (0x82C13FF0)
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82C406CCu) = 0x82C406D0u;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82C406D0u) = 0x82C00BF4u;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82C00BF4u) = 0x82C16CD0u;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82C00BF8u) = 0x82C16CD0u;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82C42EB0u) = 0x82C13FF0u;
+
+            // vstdlib_360.dll cross-DLL variable imports from tier0_360.dll:
+            // 0x82E0046C (ord 0xEA, g_pMemAlloc) -> 0x82C406CC
+            // 0x82E0047C (ord 0x2EA) -> 0x82C64C3C
+            // 0x82E00484 (ord 0x78)  -> 0x82C446D8
+            // 0x82E004A4 (ord 0x341) -> 0x82C434AC
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E0046Cu) = 0x82C406CCu;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E0047Cu) = 0x82C64C3Cu;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E00484u) = 0x82C446D8u;
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E004A4u) = 0x82C434ACu;
+
+            // vstdlib_360.dll internal memalloc pointer:
+            // 0x82E306D0 holds pointer to IMemAlloc (0x82C406D0)
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E306D0u) = 0x82C406D0u;
+
+            L4D2_LOG_INFO("ModuleLoader", "Pre-initialized tier0/vstdlib allocator pointers and cross-DLL variables");
+        }
+    }
 
     // Pre-populate default.xex compiled functions into global table
     if (g_global_func_table && l4d2_default_PPCImageConfig.func_mappings) {

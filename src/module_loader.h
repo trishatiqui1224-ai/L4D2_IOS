@@ -16,6 +16,8 @@ __attribute__((visibility("default"))) extern PPCFunc** g_global_func_table;
 PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr);
 void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr);
 void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3);
+void RecordDispatchBreadcrumb(uint32_t target_addr, uint32_t caller_lr);
+void DumpDispatchRingBuffer();
 }
 
 namespace rex::system { class KernelState; }

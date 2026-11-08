@@ -27,8 +27,37 @@ NEW = '''      auto* thread = XThread::GetCurrentThread();
       fflush(stdout);
       fflush(stderr);
       rex::FlushLogging();
+
+#if defined(__GNUC__) || defined(__clang__)
+      extern "C" __attribute__((weak)) void DumpDispatchRingBuffer();
+#else
+      extern "C" void DumpDispatchRingBuffer();
+#endif
+      std::atomic<bool> watchdog_done{false};
+      std::thread watchdog([&]() {
+        for (int sec = 1; sec <= 10; ++sec) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+          if (watchdog_done.load(std::memory_order_relaxed)) {
+            return;
+          }
+          REXSYS_WARN("[WATCHDOG] DllMain(0x{:08X}) for {} still running after {}s...",
+                      module->entry_point(), module->name(), sec);
+          if (DumpDispatchRingBuffer) {
+            DumpDispatchRingBuffer();
+          }
+          fflush(stdout);
+          fflush(stderr);
+          rex::FlushLogging();
+        }
+      });
+
       uint64_t dllmain_ret =
           function_dispatcher_->Execute(thread->thread_state(), module->entry_point(), args, 3);
+      watchdog_done.store(true, std::memory_order_relaxed);
+      if (watchdog.joinable()) {
+        watchdog.join();
+      }
+
       REXSYS_INFO("DllMain(0x{:08X}) returned 0x{:08X}", module->entry_point(), static_cast<uint32_t>(dllmain_ret));
       fflush(stdout);
       fflush(stderr);
