@@ -158,7 +158,7 @@ jobs:
           if [ "$build_status" -ne 0 ]; then
             echo "### Native build diagnostics" >> "$GITHUB_STEP_SUMMARY"
             echo '```text' >> "$GITHUB_STEP_SUMMARY"
-            grep -E 'error:|fatal error:|undefined reference|ld: error:|ninja: build stopped' /tmp/l4d2-ios-build-retry.log | tail -n 60 >> "$GITHUB_STEP_SUMMARY" || true
+            grep -E 'error:|fatal error:|undefined reference|Undefined symbols for architecture|symbol\(s\) not found|duplicate symbol|referenced from:|^ld:|ninja: build stopped' /tmp/l4d2-ios-build-retry.log | tail -n 100 >> "$GITHUB_STEP_SUMMARY" || true
             echo '```' >> "$GITHUB_STEP_SUMMARY"
 
             while IFS= read -r line; do
@@ -166,7 +166,7 @@ jobs:
               safe_line=${safe_line//$'\r'/'%0D'}
               safe_line=${safe_line//$'\n'/'%0A'}
               echo "::error::$safe_line"
-            done < <(grep -E 'error:|fatal error:|undefined reference|ld: error:|ninja: build stopped' /tmp/l4d2-ios-build-retry.log | tail -n 20 || true)
+            done < <(grep -E 'error:|fatal error:|undefined reference|Undefined symbols for architecture|symbol\(s\) not found|duplicate symbol|referenced from:|^ld:|ninja: build stopped' /tmp/l4d2-ios-build-retry.log | tail -n 50 || true)
           fi
 
           exit "$build_status"
