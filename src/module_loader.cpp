@@ -360,6 +360,11 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
     // 1. Initialize unified global function table (448 MB virtual memory covering 0x82000000..0x90000000)
     InitializeGlobalFunctionTable();
 
+    // Register watchdog ring buffer dump callback with rexruntime if available
+    if (RexRegisterDumpRingBufferCallback) {
+        RexRegisterDumpRingBufferCallback(&DumpDispatchRingBuffer);
+    }
+
     // 0. Pre-initialize critical cross-DLL variables and default allocator pointers in guest memory
     if (auto* mem = kernel_state->memory()) {
         uint8_t* base = mem->virtual_membase();

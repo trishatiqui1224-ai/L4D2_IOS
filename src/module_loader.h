@@ -10,6 +10,8 @@
 struct PPCContext;
 using PPCFunc = void(PPCContext& ctx, uint8_t* base);
 
+using RexDumpRingBufferFn = void (*)();
+
 extern "C" {
 __attribute__((visibility("default"))) extern PPCFunc** g_global_func_table;
 
@@ -18,6 +20,12 @@ void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, 
 void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3);
 void RecordDispatchBreadcrumb(uint32_t target_addr, uint32_t caller_lr);
 void DumpDispatchRingBuffer();
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak)) void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);
+#else
+void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);
+#endif
 }
 
 namespace rex::system { class KernelState; }

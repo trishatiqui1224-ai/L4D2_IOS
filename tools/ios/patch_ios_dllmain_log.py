@@ -22,10 +22,19 @@ namespace rex::system {
 NEW_TOP = '''#include <rex/system/xtimer.h>
 
 #if defined(__GNUC__) || defined(__clang__)
-extern "C" __attribute__((weak)) void DumpDispatchRingBuffer();
+#define REX_CALLBACK_EXPORT __attribute__((visibility("default")))
+#elif defined(_MSC_VER)
+#define REX_CALLBACK_EXPORT __declspec(dllexport)
 #else
-extern "C" void DumpDispatchRingBuffer();
+#define REX_CALLBACK_EXPORT
 #endif
+
+typedef void (*RexDumpRingBufferFn)();
+static RexDumpRingBufferFn s_dump_ring_buffer_fn = nullptr;
+
+extern "C" REX_CALLBACK_EXPORT void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn) {
+  s_dump_ring_buffer_fn = fn;
+}
 
 namespace rex::system {
 '''
@@ -53,8 +62,8 @@ NEW_EXEC = '''      auto* thread = XThread::GetCurrentThread();
           }
           REXSYS_WARN("[WATCHDOG] DllMain(0x{:08X}) for {} still running after {}s...",
                       module->entry_point(), module->name(), sec);
-          if (DumpDispatchRingBuffer) {
-            DumpDispatchRingBuffer();
+          if (s_dump_ring_buffer_fn) {
+            s_dump_ring_buffer_fn();
           }
           fflush(stdout);
           fflush(stderr);
@@ -77,7 +86,7 @@ NEW_EXEC = '''      auto* thread = XThread::GetCurrentThread();
 '''
 
 BLOCKS = [
-    (FILE, "declare DumpDispatchRingBuffer at file scope", ANCHOR_TOP, NEW_TOP),
+    (FILE, "define RexRegisterDumpRingBufferCallback at file scope", ANCHOR_TOP, NEW_TOP),
     (FILE, "log Calling DllMain with watchdog and returned with flush", ANCHOR_EXEC, NEW_EXEC),
 ]
 
