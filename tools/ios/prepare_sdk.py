@@ -15,9 +15,12 @@ import argparse
 import importlib.util
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tarfile
+import time
+import urllib.error
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -373,8 +376,26 @@ def moltenvk(sdk):
     tar = dest.parent / "MoltenVK-ios.tar"
     if not tar.exists():
         print(f"[..] Downloading MoltenVK {MOLTENVK_VERSION} for iOS")
-        with urllib.request.urlopen(MOLTENVK_URL, timeout=300) as resp:
-            tar.write_bytes(resp.read())
+        partial = tar.with_suffix(".tar.part")
+        for attempt in range(1, 5):
+            try:
+                with urllib.request.urlopen(MOLTENVK_URL, timeout=300) as response:
+                    with partial.open("wb") as output:
+                        shutil.copyfileobj(response, output)
+                with tarfile.open(partial) as archive:
+                    archive.getmembers()
+                partial.replace(tar)
+                break
+            except (urllib.error.URLError, TimeoutError, tarfile.ReadError, EOFError) as exc:
+                partial.unlink(missing_ok=True)
+                if attempt == 4 or (
+                    isinstance(exc, urllib.error.HTTPError)
+                    and exc.code not in (408, 429, 500, 502, 503, 504)
+                ):
+                    raise
+                delay = 2 ** attempt
+                print(f"[retry] MoltenVK download attempt {attempt} failed: {exc}; retrying in {delay}s")
+                time.sleep(delay)
     with tarfile.open(tar) as t:
         if hasattr(tarfile, 'data_filter'):
             t.extractall(dest, filter='data')
