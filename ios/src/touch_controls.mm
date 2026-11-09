@@ -236,14 +236,18 @@ static bool s_gamepad_connected = false;
     UIButton* btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.frame = rect;
     btn.backgroundColor = color;
-    btn.layer.cornerRadius = 10.0;
-    if (borderColor) {
-        btn.layer.borderColor = borderColor.CGColor;
-        btn.layer.borderWidth = 1.5;
-    }
+    btn.layer.cornerRadius = MIN(rect.size.width, rect.size.height) * 0.34;
+    btn.layer.shadowColor = UIColor.blackColor.CGColor;
+    btn.layer.shadowOpacity = 0.32;
+    btn.layer.shadowRadius = 5;
+    btn.layer.shadowOffset = CGSizeMake(0, 2);
+    btn.layer.borderColor = borderColor ? borderColor.CGColor : [UIColor colorWithWhite:1 alpha:0.36].CGColor;
+    btn.layer.borderWidth = borderColor ? 1.5 : 1;
     [btn setTitle:title forState:UIControlStateNormal];
     btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btn.titleLabel.adjustsFontSizeToFitWidth = YES;
+    btn.titleLabel.minimumScaleFactor = 0.72;
     [btn setTitleColor:[UIColor colorWithWhite:0.7 alpha:1.0] forState:UIControlStateHighlighted];
     [btn addTarget:self action:@selector(buttonDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
     [btn addTarget:self action:@selector(buttonUp:) forControlEvents:UIControlEventTouchUpInside |
@@ -313,10 +317,13 @@ static bool s_gamepad_connected = false;
     const CGFloat radius = _leftStickBase.bounds.size.width * 0.38;
     const CGFloat dx = point.x - CGRectGetMidX(_leftStickBase.frame);
     const CGFloat dy = point.y - CGRectGetMidY(_leftStickBase.frame);
-    const CGFloat scale = std::max(radius, std::hypot(dx, dy));
-    _leftStickThumb.transform = CGAffineTransformMakeTranslation(dx / scale * radius, dy / scale * radius);
+    const CGFloat distance = std::hypot(dx, dy);
+    const CGFloat scale = std::max(radius, distance);
+    const CGFloat x = dx / scale * radius;
+    const CGFloat y = dy / scale * radius;
+    _leftStickThumb.transform = CGAffineTransformMakeTranslation(x, y);
 #if L4D2_TOUCH_SDL
-    SetStick(SDL_GAMEPAD_AXIS_LEFTX, dx / scale, dy / scale);
+    SetStick(SDL_GAMEPAD_AXIS_LEFTX, x / radius, y / radius);
 #endif
 }
 
@@ -336,16 +343,15 @@ static bool s_gamepad_connected = false;
 
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
     (void)event;
-    for (UITouch* t in touches) {
-        if (t.hash == _moveTouchHash) {
-            [self moveStick:[t locationInView:self]];
-        } else if (_config.drag_to_look && t.hash == _lookTouchHash) {
-            CGPoint pt = [t locationInView:self];
-            CGFloat dx = (pt.x - _lastLookPoint.x) * _config.look_sensitivity_x;
-            CGFloat dy = (pt.y - _lastLookPoint.y) * _config.look_sensitivity_y;
+    for (UITouch* touch in touches) {
+        CGPoint point = [touch locationInView:self];
+        if (touch.hash == _moveTouchHash) {
+            [self moveStick:point];
+        } else if (_config.drag_to_look && touch.hash == _lookTouchHash) {
+            CGFloat dx = (point.x - _lastLookPoint.x) * _config.look_sensitivity_x;
+            CGFloat dy = (point.y - _lastLookPoint.y) * _config.look_sensitivity_y;
             if (_config.invert_y) dy = -dy;
-            _lastLookPoint = pt;
-
+            _lastLookPoint = point;
 #if L4D2_TOUCH_SDL
             SetStick(SDL_GAMEPAD_AXIS_RIGHTX, dx / 18.0, dy / 18.0);
             const NSUInteger sequence = ++_lookSequence;

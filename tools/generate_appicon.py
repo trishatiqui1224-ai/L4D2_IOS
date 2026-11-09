@@ -15,10 +15,12 @@ import os
 import pathlib
 import sys
 from PIL import Image, ImageFilter
+from PIL import ImageDraw, ImageFont
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 APPICONSET_DIR = ROOT / "ios" / "resources" / "Assets.xcassets" / "AppIcon.appiconset"
 OFFICIAL_MASTER = ROOT / "tools" / "l4d2_official_icon_master.png"
+RECOMP_MASTER = ROOT / "tools" / "l4d2_recomp_icon_master.png"
 
 ICON_SPECS = [
     # Universal / App Store
@@ -46,7 +48,10 @@ ICON_SPECS = [
 
 
 def get_master_icon() -> Image.Image:
-    """Loads authentic 1024x1024 Left 4 Dead 2 master icon."""
+    """Loads the custom Recomp mark, then falls back to official game art."""
+    if RECOMP_MASTER.is_file():
+        print(f"[generate_appicon] Loading Recomp master icon from {RECOMP_MASTER.name}...")
+        return Image.open(RECOMP_MASTER).convert("RGB").resize((1024, 1024), Image.Resampling.LANCZOS)
     # 1. Prefer pre-extracted official high-resolution master
     if OFFICIAL_MASTER.is_file():
         print(f"[generate_appicon] Loading authentic master icon from {OFFICIAL_MASTER.name}...")
