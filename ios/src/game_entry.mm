@@ -158,8 +158,9 @@ protected:
     void OnPostSetup() override {
         l4d2::boot::Trace("game: runtime set up (OnPostSetup)");
 
-        // 1. Crash handler
-        l4d2::CrashHandler::Install();
+        // The crash handler is installed before runtime setup. ReXGlue now
+        // owns SIGBUS/SIGSEGV so it can service guest memory write watches and
+        // forward unhandled faults to that earlier crash handler.
 
         // 2. Render Config
         l4d2::RenderConfig renderCfg;
