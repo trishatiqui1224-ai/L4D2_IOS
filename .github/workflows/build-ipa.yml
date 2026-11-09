@@ -104,6 +104,7 @@ jobs:
           python3 tools/patch_unique_entry_points.py --status
           python3 tools/patch_tier0_null_check.py --apply
           python3 tools/patch_tier0_null_check.py --status
+          python3 tools/patch_engine_null_vtable.py
           python3 tools/patch_engine_cleanup.py
 
       - name: Verify Static Multi-Module Dispatcher Coverage

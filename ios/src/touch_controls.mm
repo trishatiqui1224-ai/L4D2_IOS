@@ -198,7 +198,31 @@ static bool s_gamepad_connected = false;
         [_slotButtons addObject:slotBtn];
         [self addSubview:slotBtn];
     }
+#if L4D2_TOUCH_SDL
+    [self addNavigationPadAtX:36 y:h - 92];
+#endif
 }
+
+#if L4D2_TOUCH_SDL
+- (void)addNavigationPadAtX:(CGFloat)x y:(CGFloat)y {
+    const CGFloat d = 38;
+    const UIColor* color = [UIColor colorWithWhite:0.12 alpha:0.76];
+    for (NSArray* item in @[
+        @[@"↑", @[@(SDL_GAMEPAD_BUTTON_DPAD_UP)], @[@(x + d), @(y)]],
+        @[@"↓", @[@(SDL_GAMEPAD_BUTTON_DPAD_DOWN)], @[@(x + d), @(y + d * 2)]],
+        @[@"←", @[@(SDL_GAMEPAD_BUTTON_DPAD_LEFT)], @[@(x), @(y + d)]],
+        @[@"→", @[@(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)], @[@(x + d * 2), @(y + d)]],
+        @[@"MENU", @[@(SDL_GAMEPAD_BUTTON_START)], @[@(x + d * 2 + 8), @(y - 52)]],
+        @[@"BACK", @[@(SDL_GAMEPAD_BUTTON_BACK)], @[@(x + d * 2 + 8), @(y + d * 2 + 8)]],
+    ]) {
+        NSString* title = item[0];
+        CGRect frame = CGRectMake([item[2][0] doubleValue], [item[2][1] doubleValue], d, d);
+        UIButton* button = [self makeButton:title rect:frame color:(UIColor*)color border:nil];
+        button.accessibilityLabel = [NSString stringWithFormat:@"Menu %@", title];
+        [self addSubview:button];
+    }
+}
+#endif
 
 - (void)buildXboxPadMode:(CGFloat)w height:(CGFloat)h {
     // Classic Xbox 360 overlay: Sticks, D-pad, ABXY, Triggers, Bumpers
@@ -275,7 +299,10 @@ static bool s_gamepad_connected = false;
         @"CROUCH": @(SDL_GAMEPAD_BUTTON_LEFT_STICK), @"ZOOM": @(SDL_GAMEPAD_BUTTON_RIGHT_STICK),
         @"LIGHT": @(SDL_GAMEPAD_BUTTON_DPAD_UP), @"THROW": @(SDL_GAMEPAD_BUTTON_DPAD_LEFT),
         @"KIT": @(SDL_GAMEPAD_BUTTON_DPAD_DOWN), @"PILLS": @(SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
-        @"PAUSE": @(SDL_GAMEPAD_BUTTON_START),
+        @"PAUSE": @(SDL_GAMEPAD_BUTTON_START), @"MENU": @(SDL_GAMEPAD_BUTTON_START),
+        @"BACK": @(SDL_GAMEPAD_BUTTON_BACK),
+        @"↑": @(SDL_GAMEPAD_BUTTON_DPAD_UP), @"↓": @(SDL_GAMEPAD_BUTTON_DPAD_DOWN),
+        @"←": @(SDL_GAMEPAD_BUTTON_DPAD_LEFT), @"→": @(SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
     };
     NSNumber* index = buttons[title];
     if (index) SDL_SetJoystickVirtualButton(s_pad, index.intValue, pressed);
