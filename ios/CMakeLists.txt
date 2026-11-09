@@ -321,6 +321,7 @@ set(L4D2_GAME_SOURCES
 )
 
 add_library(L4D2Game SHARED ${L4D2_GAME_SOURCES})
+target_compile_definitions(L4D2Game PRIVATE L4D2_TOUCH_SDL=1)
 
 set_target_properties(L4D2Game PROPERTIES
     OUTPUT_NAME "L4D2Game"

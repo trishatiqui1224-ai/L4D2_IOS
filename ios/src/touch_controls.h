@@ -19,7 +19,7 @@ struct TouchConfig {
     float look_sensitivity_y = 1.0f;
     bool invert_y = false;
     float hud_opacity = 0.85f;
-    bool auto_hide_on_controller = true;
+    bool auto_hide_on_controller = false;
 };
 
 void Install(const TouchConfig& config);

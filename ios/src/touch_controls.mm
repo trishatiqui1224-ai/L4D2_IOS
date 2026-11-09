@@ -2,11 +2,44 @@
 #import "l4d2_strings.h"
 #import <UIKit/UIKit.h>
 #import <GameController/GameController.h>
+#import "boot_trace.h"
 
+#include <algorithm>
 #include <cmath>
-#include <vector>
+#if L4D2_TOUCH_SDL
+#include <SDL3/SDL.h>
 
-static l4d2::touch::TouchConfig s_config;
+static SDL_Joystick* s_pad = nullptr;
+
+static void StartTouchPad() {
+    if (s_pad) return;
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.name = "L4D2 Touch Controller";
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_DPAD_RIGHT + 1;
+    desc.axis_mask = (1u << desc.naxes) - 1;
+    desc.button_mask = (1u << desc.nbuttons) - 1;
+    const auto id = SDL_AttachVirtualJoystick(&desc);
+    if (id) s_pad = SDL_OpenJoystick(id);
+    if (!s_pad) {
+        l4d2::boot::Trace(std::string("touch: virtual gamepad failed: ") + SDL_GetError());
+        if (id) SDL_DetachVirtualJoystick(id);
+        return;
+    }
+    SDL_SetJoystickVirtualAxis(s_pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    SDL_SetJoystickVirtualAxis(s_pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, SDL_JOYSTICK_AXIS_MIN);
+    l4d2::boot::Trace("touch: virtual gamepad attached");
+}
+
+static void SetStick(int axis, CGFloat x, CGFloat y) {
+    if (!s_pad) return;
+    SDL_SetJoystickVirtualAxis(s_pad, axis, std::clamp(x, CGFloat(-1), CGFloat(1)) * 32767);
+    SDL_SetJoystickVirtualAxis(s_pad, axis + 1, std::clamp(y, CGFloat(-1), CGFloat(1)) * 32767);
+}
+#endif
+
 static UIView* s_overlay = nil;
 static UILabel* s_fps_label = nil;
 static bool s_gamepad_connected = false;
@@ -20,6 +53,9 @@ static bool s_gamepad_connected = false;
 @property (nonatomic, strong) UIView* lookArea;
 @property (nonatomic, assign) CGPoint lastLookPoint;
 @property (nonatomic, assign) NSUInteger lookTouchHash;
+@property (nonatomic, assign) NSUInteger moveTouchHash;
+@property (nonatomic, assign) NSUInteger lookSequence;
+@property (nonatomic, assign) CGSize layoutSize;
 
 - (instancetype)initWithFrame:(CGRect)frame config:(const l4d2::touch::TouchConfig&)config;
 - (void)buildUI;
@@ -35,6 +71,7 @@ static bool s_gamepad_connected = false;
     if (self = [super initWithFrame:frame]) {
         _config = config;
         self.multipleTouchEnabled = YES;
+        self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.backgroundColor = [UIColor clearColor];
         self.alpha = config.hud_opacity;
         [self buildUI];
@@ -49,6 +86,7 @@ static bool s_gamepad_connected = false;
     _slotButtons = [NSMutableArray array];
 
     CGRect bounds = self.bounds;
+    _layoutSize = bounds.size;
     CGFloat w = bounds.size.width;
     CGFloat h = bounds.size.height;
 
@@ -56,6 +94,15 @@ static bool s_gamepad_connected = false;
         [self buildShooterMode:w height:h];
     } else {
         [self buildXboxPadMode:w height:h];
+    }
+    [self addSubview:[self makeButton:@"PAUSE" rect:CGRectMake(w * 0.5 + 34, 20, 60, 40)
+                                  color:[UIColor colorWithWhite:0.2 alpha:0.75] border:nil]];
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if (!CGSizeEqualToSize(self.bounds.size, _layoutSize) && !_moveTouchHash && !_lookTouchHash) {
+        [self buildUI];
     }
 }
 
@@ -135,14 +182,14 @@ static bool s_gamepad_connected = false;
     [self addSubview:lightBtn];
 
     // 4. 5-Slot Left 4 Dead 2 Inventory Bar (Bottom-Center)
-    CGFloat barW = 320.0;
+    CGFloat barW = 250.0;
     CGFloat slotW = 58.0;
     CGFloat slotH = 46.0;
     CGFloat barX = (w - barW) / 2.0;
     CGFloat barY = h - slotH - 12.0;
 
-    NSArray* slotTitles = @[@"1:Prim", @"2:Sec", @"3:Gren", @"4:Kit", @"5:Pill"];
-    for (int i = 0; i < 5; ++i) {
+    NSArray* slotTitles = @[@"WEAPON", @"THROW", @"KIT", @"PILLS"];
+    for (NSUInteger i = 0; i < slotTitles.count; ++i) {
         CGRect slotRect = CGRectMake(barX + i * (slotW + 6.0), barY, slotW, slotH);
         UIButton* slotBtn = [self makeButton:slotTitles[i] rect:slotRect
                                       color:[UIColor colorWithRed:0.1 green:0.14 blue:0.1 alpha:0.8]
@@ -162,6 +209,12 @@ static bool s_gamepad_connected = false;
     _leftStickBase.layer.borderWidth = 2.0;
     _leftStickBase.layer.borderColor = [UIColor colorWithWhite:0.8 alpha:0.3].CGColor;
     [self addSubview:_leftStickBase];
+    _leftStickThumb = [[UIView alloc] initWithFrame:CGRectMake(35, 35, 50, 50)];
+    _leftStickThumb.backgroundColor = [UIColor colorWithWhite:0.9 alpha:0.6];
+    _leftStickThumb.layer.cornerRadius = 25;
+    [_leftStickBase addSubview:_leftStickThumb];
+    _lookArea = [[UIView alloc] initWithFrame:CGRectMake(w * 0.45, 0, w * 0.55, h * 0.8)];
+    [self addSubview:_lookArea];
 
     // ABXY Diamond on right
     CGFloat btnD = 50.0;
@@ -192,8 +245,41 @@ static bool s_gamepad_connected = false;
     btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     [btn setTitleColor:[UIColor colorWithWhite:0.7 alpha:1.0] forState:UIControlStateHighlighted];
+    [btn addTarget:self action:@selector(buttonDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
+    [btn addTarget:self action:@selector(buttonUp:) forControlEvents:UIControlEventTouchUpInside |
+        UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
     return btn;
 }
+
+- (void)setButton:(UIButton*)button pressed:(BOOL)pressed {
+#if L4D2_TOUCH_SDL
+    if (!s_pad) return;
+    NSString* title = [button titleForState:UIControlStateNormal];
+    if ([title isEqualToString:@"FIRE"] || [title isEqualToString:@"RT"] ||
+        [title isEqualToString:@"SHOVE"] || [title isEqualToString:@"LT"]) {
+        const bool right = [title isEqualToString:@"FIRE"] || [title isEqualToString:@"RT"];
+        SDL_SetJoystickVirtualAxis(s_pad, right ? SDL_GAMEPAD_AXIS_RIGHT_TRIGGER : SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
+                                   pressed ? SDL_JOYSTICK_AXIS_MAX : SDL_JOYSTICK_AXIS_MIN);
+        return;
+    }
+    NSDictionary<NSString*, NSNumber*>* buttons = @{
+        @"A": @(SDL_GAMEPAD_BUTTON_SOUTH), @"JUMP": @(SDL_GAMEPAD_BUTTON_SOUTH),
+        @"B": @(SDL_GAMEPAD_BUTTON_EAST), @"RELOAD": @(SDL_GAMEPAD_BUTTON_WEST),
+        @"X": @(SDL_GAMEPAD_BUTTON_WEST), @"USE": @(SDL_GAMEPAD_BUTTON_EAST),
+        @"Y": @(SDL_GAMEPAD_BUTTON_NORTH), @"WEAPON": @(SDL_GAMEPAD_BUTTON_NORTH),
+        @"LB": @(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), @"RB": @(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER),
+        @"CROUCH": @(SDL_GAMEPAD_BUTTON_LEFT_STICK), @"ZOOM": @(SDL_GAMEPAD_BUTTON_RIGHT_STICK),
+        @"LIGHT": @(SDL_GAMEPAD_BUTTON_DPAD_UP), @"THROW": @(SDL_GAMEPAD_BUTTON_DPAD_LEFT),
+        @"KIT": @(SDL_GAMEPAD_BUTTON_DPAD_DOWN), @"PILLS": @(SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
+        @"PAUSE": @(SDL_GAMEPAD_BUTTON_START),
+    };
+    NSNumber* index = buttons[title];
+    if (index) SDL_SetJoystickVirtualButton(s_pad, index.intValue, pressed);
+#endif
+}
+
+- (void)buttonDown:(UIButton*)button { [self setButton:button pressed:YES]; }
+- (void)buttonUp:(UIButton*)button { [self setButton:button pressed:NO]; }
 
 - (void)setupGamepadObserver {
     [[NSNotificationCenter defaultCenter] addObserverForName:GCControllerDidConnectNotification
@@ -217,12 +303,31 @@ static bool s_gamepad_connected = false;
     }];
 }
 
-// Touch Handling for Mobile Drag Look & Virtual Sticks
+- (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
+    UIView* hit = [super hitTest:point withEvent:event];
+    if (hit && (hit == _leftStickBase || hit == _leftStickThumb || hit == _lookArea)) return self;
+    return hit == self ? nil : hit;
+}
+
+- (void)moveStick:(CGPoint)point {
+    const CGFloat radius = _leftStickBase.bounds.size.width * 0.38;
+    const CGFloat dx = point.x - CGRectGetMidX(_leftStickBase.frame);
+    const CGFloat dy = point.y - CGRectGetMidY(_leftStickBase.frame);
+    const CGFloat scale = std::max(radius, std::hypot(dx, dy));
+    _leftStickThumb.transform = CGAffineTransformMakeTranslation(dx / scale * radius, dy / scale * radius);
+#if L4D2_TOUCH_SDL
+    SetStick(SDL_GAMEPAD_AXIS_LEFTX, dx / scale, dy / scale);
+#endif
+}
+
 - (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
     (void)event;
     for (UITouch* t in touches) {
         CGPoint pt = [t locationInView:self];
-        if (_config.drag_to_look && pt.x > self.bounds.size.width * 0.45 && pt.y < self.bounds.size.height * 0.85) {
+        if (!_moveTouchHash && CGRectContainsPoint(_leftStickBase.frame, pt)) {
+            _moveTouchHash = t.hash;
+            [self moveStick:pt];
+        } else if (!_lookTouchHash && _config.drag_to_look && CGRectContainsPoint(_lookArea.frame, pt)) {
             _lookTouchHash = (NSUInteger)t.hash;
             _lastLookPoint = pt;
         }
@@ -232,15 +337,22 @@ static bool s_gamepad_connected = false;
 - (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
     (void)event;
     for (UITouch* t in touches) {
-        if (_config.drag_to_look && (NSUInteger)t.hash == _lookTouchHash) {
+        if (t.hash == _moveTouchHash) {
+            [self moveStick:[t locationInView:self]];
+        } else if (_config.drag_to_look && t.hash == _lookTouchHash) {
             CGPoint pt = [t locationInView:self];
             CGFloat dx = (pt.x - _lastLookPoint.x) * _config.look_sensitivity_x;
             CGFloat dy = (pt.y - _lastLookPoint.y) * _config.look_sensitivity_y;
             if (_config.invert_y) dy = -dy;
             _lastLookPoint = pt;
 
-            // Send camera delta directly to input system (simulating right stick axis)
-            (void)dx; (void)dy;
+#if L4D2_TOUCH_SDL
+            SetStick(SDL_GAMEPAD_AXIS_RIGHTX, dx / 18.0, dy / 18.0);
+            const NSUInteger sequence = ++_lookSequence;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 65 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                if (self.lookSequence == sequence) SetStick(SDL_GAMEPAD_AXIS_RIGHTX, 0, 0);
+            });
+#endif
         }
     }
 }
@@ -250,6 +362,17 @@ static bool s_gamepad_connected = false;
     for (UITouch* t in touches) {
         if ((NSUInteger)t.hash == _lookTouchHash) {
             _lookTouchHash = 0;
+            ++_lookSequence;
+#if L4D2_TOUCH_SDL
+            SetStick(SDL_GAMEPAD_AXIS_RIGHTX, 0, 0);
+#endif
+        }
+        if (t.hash == _moveTouchHash) {
+            _moveTouchHash = 0;
+            _leftStickThumb.transform = CGAffineTransformIdentity;
+#if L4D2_TOUCH_SDL
+            SetStick(SDL_GAMEPAD_AXIS_LEFTX, 0, 0);
+#endif
         }
     }
 }
@@ -263,27 +386,45 @@ static bool s_gamepad_connected = false;
 namespace l4d2::touch {
 
 static UIWindow* GetKeyWindow() {
+    UIWindow* keyWindow = nil;
     for (UIWindowScene* scene in [UIApplication sharedApplication].connectedScenes) {
         if ([scene isKindOfClass:[UIWindowScene class]]) {
             for (UIWindow* w in scene.windows) {
-                if (w.isKeyWindow || scene.windows.count == 1) return w;
+                if (w.hidden || !w.rootViewController) continue;
+                if ([NSStringFromClass(w.rootViewController.class) hasPrefix:@"SDL"]) return w;
+                if (w.isKeyWindow) keyWindow = w;
             }
         }
     }
-    return nil;
+    return keyWindow;
+}
+
+static void InstallOnMain(const TouchConfig config, unsigned retries) {
+    UIWindow* window = GetKeyWindow();
+    if (!window || ![NSStringFromClass(window.rootViewController.class) hasPrefix:@"SDL"]) {
+        if (retries) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+                InstallOnMain(config, retries - 1);
+            });
+        } else {
+            l4d2::boot::Trace("touch: SDL window unavailable");
+        }
+        return;
+    }
+#if L4D2_TOUCH_SDL
+    StartTouchPad();
+#endif
+    [s_overlay removeFromSuperview];
+    s_overlay = [[L4D2TouchOverlay alloc] initWithFrame:window.bounds config:config];
+    s_overlay.layer.zPosition = 100;
+    [window addSubview:s_overlay];
+    l4d2::boot::Trace("touch: overlay attached to SDL window");
 }
 
 void Install(const TouchConfig& config) {
-    s_config = config;
+    const TouchConfig initial = config;
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow* window = GetKeyWindow();
-        if (!window) return;
-
-        if (s_overlay) {
-            [s_overlay removeFromSuperview];
-        }
-        s_overlay = [[L4D2TouchOverlay alloc] initWithFrame:window.bounds config:config];
-        [window addSubview:s_overlay];
+        InstallOnMain(initial, 20);
     });
 }
 
@@ -315,11 +456,11 @@ void SetVisible(bool visible) {
 }
 
 void UpdateConfig(const TouchConfig& config) {
-    s_config = config;
+    const TouchConfig updated = config;
     dispatch_async(dispatch_get_main_queue(), ^{
         if (s_overlay && [s_overlay isKindOfClass:[L4D2TouchOverlay class]]) {
             L4D2TouchOverlay* ov = (L4D2TouchOverlay*)s_overlay;
-            ov.config = config;
+            ov.config = updated;
             [ov buildUI];
         }
     });
