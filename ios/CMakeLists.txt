@@ -293,6 +293,7 @@ target_compile_definitions(L4D2Recomp PRIVATE
 target_link_libraries(L4D2Recomp PRIVATE
     "-framework UIKit"
     "-framework Foundation"
+    "-framework CoreGraphics"
     "-framework QuartzCore"
     "-framework Metal"
     "-framework AVFAudio"
