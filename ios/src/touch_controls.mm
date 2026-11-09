@@ -48,6 +48,9 @@ static bool s_gamepad_connected = false;
 @property (nonatomic, assign) l4d2::touch::TouchConfig config;
 @property (nonatomic, strong) NSMutableArray<UIButton*>* actionButtons;
 @property (nonatomic, strong) NSMutableArray<UIButton*>* slotButtons;
+@property (nonatomic, strong) NSMutableArray<UIButton*>* navigationButtons;
+@property (nonatomic, strong) UIButton* modeButton;
+@property (nonatomic, assign) BOOL navigationMode;
 @property (nonatomic, strong) UIView* leftStickBase;
 @property (nonatomic, strong) UIView* leftStickThumb;
 @property (nonatomic, strong) UIView* lookArea;
@@ -84,6 +87,7 @@ static bool s_gamepad_connected = false;
     [self.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
     _actionButtons = [NSMutableArray array];
     _slotButtons = [NSMutableArray array];
+    _navigationButtons = [NSMutableArray array];
 
     CGRect bounds = self.bounds;
     _layoutSize = bounds.size;
@@ -97,6 +101,15 @@ static bool s_gamepad_connected = false;
     }
     [self addSubview:[self makeButton:@"PAUSE" rect:CGRectMake(w * 0.5 + 34, 20, 60, 40)
                                   color:[UIColor colorWithWhite:0.2 alpha:0.75] border:nil]];
+    _modeButton = [self makeButton:@"MENU" rect:CGRectMake(w - 116, 20, 96, 40)
+                             color:[UIColor colorWithRed:0.30 green:0.12 blue:0.10 alpha:0.88]
+                            border:[UIColor colorWithRed:0.85 green:0.32 blue:0.20 alpha:0.9]];
+    [_modeButton removeTarget:self action:@selector(buttonDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
+    [_modeButton removeTarget:self action:@selector(buttonUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
+    [_modeButton addTarget:self action:@selector(toggleNavigationMode) forControlEvents:UIControlEventTouchUpInside];
+    [_actionButtons removeObjectIdenticalTo:_modeButton];
+    [self addSubview:_modeButton];
+    [self updateControlMode];
 }
 
 - (void)layoutSubviews {
@@ -205,24 +218,60 @@ static bool s_gamepad_connected = false;
 
 #if L4D2_TOUCH_SDL
 - (void)addNavigationPadAtX:(CGFloat)x y:(CGFloat)y {
-    const CGFloat d = 38;
+    const CGFloat d = 34;
     const UIColor* color = [UIColor colorWithWhite:0.12 alpha:0.76];
-    for (NSArray* item in @[
-        @[@"↑", @[@(SDL_GAMEPAD_BUTTON_DPAD_UP)], @[@(x + d), @(y)]],
-        @[@"↓", @[@(SDL_GAMEPAD_BUTTON_DPAD_DOWN)], @[@(x + d), @(y + d * 2)]],
-        @[@"←", @[@(SDL_GAMEPAD_BUTTON_DPAD_LEFT)], @[@(x), @(y + d)]],
-        @[@"→", @[@(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)], @[@(x + d * 2), @(y + d)]],
-        @[@"MENU", @[@(SDL_GAMEPAD_BUTTON_START)], @[@(x + d * 2 + 8), @(y - 52)]],
-        @[@"BACK", @[@(SDL_GAMEPAD_BUTTON_BACK)], @[@(x + d * 2 + 8), @(y + d * 2 + 8)]],
-    ]) {
+    NSArray* controls = @[
+        @[@"↑", @(x + d), @(y)],
+        @[@"↓", @(x + d), @(y + d * 2)],
+        @[@"←", @(x), @(y + d)],
+        @[@"→", @(x + d * 2), @(y + d)],
+    ];
+    for (NSArray* item in controls) {
         NSString* title = item[0];
-        CGRect frame = CGRectMake([item[2][0] doubleValue], [item[2][1] doubleValue], d, d);
+        CGRect frame = CGRectMake([item[1] doubleValue], [item[2] doubleValue], d, d);
         UIButton* button = [self makeButton:title rect:frame color:(UIColor*)color border:nil];
         button.accessibilityLabel = [NSString stringWithFormat:@"Menu %@", title];
+        [_actionButtons removeObjectIdenticalTo:button];
+        [_navigationButtons addObject:button];
+        [self addSubview:button];
+    }
+    for (NSArray* item in @[
+        @[@"A", @(self.bounds.size.width - 108), @(self.bounds.size.height - 78)],
+        @[@"B", @(self.bounds.size.width - 58), @(self.bounds.size.height - 78)],
+    ]) {
+        UIButton* button = [self makeButton:item[0]
+                                       rect:CGRectMake([item[1] doubleValue], [item[2] doubleValue], 46, 46)
+                                      color:[UIColor colorWithWhite:0.12 alpha:0.82]
+                                     border:nil];
+        [_actionButtons removeObjectIdenticalTo:button];
+        [_navigationButtons addObject:button];
         [self addSubview:button];
     }
 }
 #endif
+
+- (void)updateControlMode {
+    for (UIButton* button in _actionButtons) button.hidden = self.navigationMode;
+    for (UIButton* button in _slotButtons) button.hidden = self.navigationMode;
+    for (UIButton* button in _navigationButtons) button.hidden = !self.navigationMode;
+    _leftStickBase.hidden = self.navigationMode;
+    _lookArea.hidden = self.navigationMode;
+    [_modeButton setTitle:self.navigationMode ? @"GAME" : @"MENU" forState:UIControlStateNormal];
+}
+
+- (void)toggleNavigationMode {
+#if L4D2_TOUCH_SDL
+    if (s_pad) {
+        const SDL_GamepadButton button = self.navigationMode ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_START;
+        SDL_SetJoystickVirtualButton(s_pad, button, true);
+        SDL_UpdateJoysticks();
+        SDL_SetJoystickVirtualButton(s_pad, button, false);
+        SDL_UpdateJoysticks();
+    }
+#endif
+    self.navigationMode = !self.navigationMode;
+    [self updateControlMode];
+}
 
 - (void)buildXboxPadMode:(CGFloat)w height:(CGFloat)h {
     // Classic Xbox 360 overlay: Sticks, D-pad, ABXY, Triggers, Bumpers
@@ -254,6 +303,9 @@ static bool s_gamepad_connected = false;
     [self addSubview:[self makeButton:@"LB" rect:CGRectMake(100, 20, 60, 44) color:[UIColor colorWithWhite:0.2 alpha:0.7] border:nil]];
     [self addSubview:[self makeButton:@"RB" rect:CGRectMake(w - 160, 20, 60, 44) color:[UIColor colorWithWhite:0.2 alpha:0.7] border:nil]];
     [self addSubview:[self makeButton:@"RT" rect:CGRectMake(w - 90, 20, 60, 44) color:[UIColor colorWithRed:0.7 green:0.1 blue:0.1 alpha:0.8] border:nil]];
+#if L4D2_TOUCH_SDL
+    [self addNavigationPadAtX:36 y:h - 92];
+#endif
 }
 
 - (UIButton*)makeButton:(NSString*)title rect:(CGRect)rect color:(UIColor*)color border:(UIColor*)borderColor {
@@ -268,6 +320,23 @@ static bool s_gamepad_connected = false;
     btn.layer.borderColor = borderColor ? borderColor.CGColor : [UIColor colorWithWhite:1 alpha:0.36].CGColor;
     btn.layer.borderWidth = borderColor ? 1.5 : 1;
     [btn setTitle:title forState:UIControlStateNormal];
+    NSDictionary<NSString*, NSString*>* symbols = @{
+        @"FIRE": @"scope", @"SHOVE": @"hand.raised.fill", @"RELOAD": @"arrow.clockwise",
+        @"JUMP": @"figure.jump", @"CROUCH": @"figure.crouching", @"USE": @"hand.tap.fill",
+        @"ZOOM": @"plus.magnifyingglass", @"LIGHT": @"flashlight.on.fill",
+        @"WEAPON": @"scope", @"THROW": @"flame.fill", @"KIT": @"cross.case.fill",
+        @"PILLS": @"pills.fill", @"PAUSE": @"pause.fill",
+        @"A": @"a.circle.fill", @"B": @"b.circle.fill", @"X": @"x.circle.fill", @"Y": @"y.circle.fill",
+        @"LT": @"target", @"RT": @"scope", @"LB": @"arrow.left.to.line", @"RB": @"arrow.right.to.line",
+    };
+    NSString* symbol = symbols[title];
+    if (symbol) {
+        [btn setImage:[UIImage systemImageNamed:symbol] forState:UIControlStateNormal];
+        btn.tintColor = UIColor.whiteColor;
+        btn.imageView.preferredSymbolConfiguration =
+            [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+        btn.titleEdgeInsets = UIEdgeInsetsMake(0, 3, 0, 0);
+    }
     btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
     [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
     btn.titleLabel.adjustsFontSizeToFitWidth = YES;
@@ -276,6 +345,7 @@ static bool s_gamepad_connected = false;
     [btn addTarget:self action:@selector(buttonDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
     [btn addTarget:self action:@selector(buttonUp:) forControlEvents:UIControlEventTouchUpInside |
         UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
+    [_actionButtons addObject:btn];
     return btn;
 }
 
@@ -449,6 +519,7 @@ static void InstallOnMain(const TouchConfig config, unsigned retries) {
 #endif
     [s_overlay removeFromSuperview];
     s_overlay = [[L4D2TouchOverlay alloc] initWithFrame:window.bounds config:config];
+    s_overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     s_overlay.layer.zPosition = 100;
     [window addSubview:s_overlay];
     l4d2::boot::Trace("touch: overlay attached to SDL window");

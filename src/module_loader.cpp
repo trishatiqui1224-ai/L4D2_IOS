@@ -428,6 +428,11 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
             // 0x82E306D0 holds pointer to IMemAlloc (0x82C406D0)
             *reinterpret_cast<rex::be<uint32_t>*>(base + 0x82E306D0u) = 0x82C406D0u;
 
+            // engine_360.dll's IMemAlloc holder is still null when its first
+            // allocation runs during client startup. The crash trace shows the
+            // holder at 0x871C0000, reached from the engine allocator thunk.
+            *reinterpret_cast<rex::be<uint32_t>*>(base + 0x871C0000u) = 0x82C406D0u;
+
             // Apply guest data relocations across all rebased module ranges
             for (const auto& desc : kSourceModules) {
                 if (desc.image_base > 0x82000000 && desc.image_end > desc.image_base) {
@@ -451,7 +456,7 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
                 }
             }
 
-            L4D2_LOG_INFO("ModuleLoader", "Pre-initialized tier0/vstdlib allocator pointers and cross-DLL variables");
+            L4D2_LOG_INFO("ModuleLoader", "Pre-initialized tier0/vstdlib/engine allocator pointers and cross-DLL variables");
         }
     }
 
