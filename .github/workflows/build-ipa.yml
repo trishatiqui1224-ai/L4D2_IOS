@@ -24,7 +24,9 @@ permissions:
 jobs:
   build-ios:
     name: Build L4D2 Recomp iOS (ARM64)
-    runs-on: macos-latest
+    # Use the Intel hosted pool while macOS ARM64 runner capacity is constrained.
+    # Xcode cross-compiles the iOS app for arm64 on Intel hosts.
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout Repository
