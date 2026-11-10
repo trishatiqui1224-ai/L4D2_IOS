@@ -158,6 +158,23 @@ patch_function(
 """,
 )
 
+# The engine's singleton can already be installed when its backing allocator
+# is still null. Bind it to Tier0's default object, rather than its mutable
+# allocator slot, which can point back to this wrapper.
+patch_function(
+    "sub_86C314B8",
+    """loc_86C3150C:
+\t// lwz r3,4(r31)
+""",
+    """loc_86C3150C:
+\tif (ctx.r31.u32 == 0x86F2A9A0u && REX_LOAD_U32(ctx.r31.u32 + 4) == 0 &&
+\t    REX_LOAD_U32(0x82C406D0u) != 0) {
+\t\tREX_STORE_U32(ctx.r31.u32 + 4, 0x82C406D0u);
+\t}
+\t// lwz r3,4(r31)
+""",
+)
+
 # The zeroing allocator wrapper must propagate allocation failure before memset.
 patch_function(
     "sub_86C37F58",
