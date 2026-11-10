@@ -157,3 +157,16 @@ patch_function(
 \t// mflr r12
 """,
 )
+
+# The zeroing allocator wrapper must propagate allocation failure before memset.
+patch_function(
+    "sub_86C37F58",
+    """\tctx.lr = 0x86C37FA0;
+\tsub_86EBE180(ctx, base);
+""",
+    """\tif (ctx.r3.u32 != 0) {
+\t\tctx.lr = 0x86C37FA0;
+\t\tsub_86EBE180(ctx, base);
+\t}
+""",
+)
