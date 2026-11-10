@@ -59,12 +59,15 @@ static bool s_gamepad_connected = false;
 @property (nonatomic, assign) NSUInteger moveTouchHash;
 @property (nonatomic, assign) NSUInteger lookSequence;
 @property (nonatomic, assign) CGSize layoutSize;
+@property (nonatomic, assign) UIEdgeInsets layoutInsets;
 
 - (instancetype)initWithFrame:(CGRect)frame config:(const l4d2::touch::TouchConfig&)config;
 - (void)buildUI;
 - (void)setupGamepadObserver;
-- (void)buildShooterMode:(CGFloat)w height:(CGFloat)h;
-- (void)buildXboxPadMode:(CGFloat)w height:(CGFloat)h;
+- (void)setButton:(UIButton*)button pressed:(BOOL)pressed;
+- (void)buildShooterMode:(CGRect)layout;
+- (void)buildXboxPadMode:(CGRect)layout;
+- (void)addNavigationPadAtX:(CGFloat)x y:(CGFloat)y diameter:(CGFloat)diameter;
 - (UIButton*)makeButton:(NSString*)title rect:(CGRect)rect color:(UIColor*)color border:(UIColor*)borderColor;
 @end
 
@@ -89,19 +92,25 @@ static bool s_gamepad_connected = false;
     _slotButtons = [NSMutableArray array];
     _navigationButtons = [NSMutableArray array];
 
-    CGRect bounds = self.bounds;
-    _layoutSize = bounds.size;
-    CGFloat w = bounds.size.width;
-    CGFloat h = bounds.size.height;
+    CGRect layout = UIEdgeInsetsInsetRect(self.bounds, _layoutInsets);
+    _layoutSize = self.bounds.size;
 
     if (_config.style == l4d2::touch::ControlStyle::L4D2ShooterMode) {
-        [self buildShooterMode:w height:h];
+        [self buildShooterMode:layout];
     } else {
-        [self buildXboxPadMode:w height:h];
+        [self buildXboxPadMode:layout];
     }
-    [self addSubview:[self makeButton:@"PAUSE" rect:CGRectMake(w * 0.5 + 34, 20, 60, 40)
-                                  color:[UIColor colorWithWhite:0.2 alpha:0.75] border:nil]];
-    _modeButton = [self makeButton:@"MENU" rect:CGRectMake(w - 116, 20, 96, 40)
+
+    const CGFloat top = CGRectGetMinY(layout) + 10.0;
+    const CGFloat midX = CGRectGetMidX(layout);
+    const BOOL xboxStyle = _config.style == l4d2::touch::ControlStyle::Xbox360Pad;
+    const CGRect pauseRect = xboxStyle ? CGRectMake(midX - 76.0, top, 68.0, 38.0)
+                                       : CGRectMake(midX - 75.0, top, 68.0, 38.0);
+    const CGRect modeRect = xboxStyle ? CGRectMake(midX + 8.0, top, 82.0, 38.0)
+                                      : CGRectMake(CGRectGetMaxX(layout) - 94.0, top, 82.0, 38.0);
+    [self addSubview:[self makeButton:@"PAUSE" rect:pauseRect
+                                  color:[UIColor colorWithWhite:0.16 alpha:0.82] border:nil]];
+    _modeButton = [self makeButton:@"MENU" rect:modeRect
                              color:[UIColor colorWithRed:0.30 green:0.12 blue:0.10 alpha:0.88]
                             border:[UIColor colorWithRed:0.85 green:0.32 blue:0.20 alpha:0.9]];
     [_modeButton removeTarget:self action:@selector(buttonDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
@@ -114,21 +123,47 @@ static bool s_gamepad_connected = false;
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    if (!CGSizeEqualToSize(self.bounds.size, _layoutSize) && !_moveTouchHash && !_lookTouchHash) {
+    UIEdgeInsets insets = self.window ? self.window.safeAreaInsets : self.safeAreaInsets;
+    const BOOL geometryChanged = !CGSizeEqualToSize(self.bounds.size, _layoutSize) ||
+        !UIEdgeInsetsEqualToEdgeInsets(insets, _layoutInsets);
+    if (geometryChanged) {
+        _moveTouchHash = 0;
+        _lookTouchHash = 0;
+        ++_lookSequence;
+#if L4D2_TOUCH_SDL
+        SetStick(SDL_GAMEPAD_AXIS_LEFTX, 0, 0);
+        SetStick(SDL_GAMEPAD_AXIS_RIGHTX, 0, 0);
+#endif
+        _layoutInsets = insets;
         [self buildUI];
     }
 }
 
-- (void)buildShooterMode:(CGFloat)w height:(CGFloat)h {
-    // 1. Movement Left Stick
-    CGFloat stickSize = 130.0;
-    _leftStickBase = [[UIView alloc] initWithFrame:CGRectMake(40, h - stickSize - 40, stickSize, stickSize)];
+- (void)safeAreaInsetsDidChange {
+    [super safeAreaInsetsDidChange];
+    [self setNeedsLayout];
+}
+
+- (void)buildShooterMode:(CGRect)layout {
+    const CGFloat left = CGRectGetMinX(layout);
+    const CGFloat top = CGRectGetMinY(layout);
+    const CGFloat right = CGRectGetMaxX(layout);
+    const CGFloat bottom = CGRectGetMaxY(layout);
+    const CGFloat h = layout.size.height;
+    const CGFloat edgeX = std::max(CGFloat(16.0), layout.size.width * 0.022);
+    const CGFloat edgeY = std::max(CGFloat(12.0), h * 0.035);
+
+    // The touch surface is laid out in points, inside the live safe area. This
+    // keeps the thumb zones clear of the iPhone 17's landscape cutouts/home bar.
+    const CGFloat stickSize = std::clamp(h * 0.32, CGFloat(104.0), CGFloat(136.0));
+    _leftStickBase = [[UIView alloc] initWithFrame:CGRectMake(left + edgeX, bottom - edgeY - stickSize,
+                                                              stickSize, stickSize)];
     _leftStickBase.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.4];
     _leftStickBase.layer.cornerRadius = stickSize / 2.0;
     _leftStickBase.layer.borderColor = [UIColor colorWithWhite:0.8 alpha:0.3].CGColor;
     _leftStickBase.layer.borderWidth = 2.0;
 
-    CGFloat thumbSize = 54.0;
+    const CGFloat thumbSize = stickSize * 0.42;
     _leftStickThumb = [[UIView alloc] initWithFrame:CGRectMake((stickSize - thumbSize)/2, (stickSize - thumbSize)/2, thumbSize, thumbSize)];
     _leftStickThumb.backgroundColor = [UIColor colorWithWhite:0.9 alpha:0.6];
     _leftStickThumb.layer.cornerRadius = thumbSize / 2.0;
@@ -136,74 +171,67 @@ static bool s_gamepad_connected = false;
     [self addSubview:_leftStickBase];
 
     // 2. Right Look Area (Mobile Shooter Drag Area)
-    _lookArea = [[UIView alloc] initWithFrame:CGRectMake(w * 0.45, 0, w * 0.55, h * 0.75)];
+    _lookArea = [[UIView alloc] initWithFrame:CGRectMake(left + layout.size.width * 0.42, top + 52.0,
+                                                          layout.size.width * 0.58, h * 0.78)];
     _lookArea.backgroundColor = [UIColor clearColor];
     _lookArea.userInteractionEnabled = YES;
     [self addSubview:_lookArea];
 
-    // 3. Ergonomic FPS Action Buttons (Right side clustered for thumb reach)
-    CGFloat btnD = 58.0;
-    CGFloat rightMargin = w - 80;
-    CGFloat bottomMargin = h - 70;
+    // A separated 3-column action cluster: common actions are one thumb move
+    // from FIRE, with its larger hit target pinned above the home-indicator edge.
+    const CGFloat btnD = std::clamp(h * 0.148, CGFloat(48.0), CGFloat(60.0));
+    const CGFloat fireD = std::clamp(h * 0.195, CGFloat(64.0), CGFloat(78.0));
+    const CGFloat gap = std::max(fireD - btnD + 6.0,
+                                 std::clamp(btnD * 0.14, CGFloat(6.0), CGFloat(9.0)));
+    const CGFloat clusterRight = right - edgeX;
+    const CGFloat col3 = clusterRight - btnD;
+    const CGFloat col2 = col3 - gap - btnD;
+    const CGFloat col1 = col2 - gap - btnD;
+    const CGFloat rowBottom = bottom - edgeY - btnD;
+    const CGFloat rowMiddle = rowBottom - gap - fireD;
+    const CGFloat rowTop = rowMiddle - gap - btnD;
+    const CGFloat fireX = clusterRight - fireD;
+    const CGFloat fireY = rowMiddle;
 
-    // FIRE BUTTON (Prominent Crimson Red)
-    UIButton* fireBtn = [self makeButton:@"FIRE" rect:CGRectMake(rightMargin - 65, bottomMargin - 90, 75, 75)
-                                color:[UIColor colorWithRed:0.70 green:0.10 blue:0.10 alpha:0.85]
-                                border:[UIColor colorWithRed:0.95 green:0.25 blue:0.25 alpha:0.9]];
-    [self addSubview:fireBtn];
+    [self addSubview:[self makeButton:@"FIRE" rect:CGRectMake(fireX, fireY, fireD, fireD)
+                                color:[UIColor colorWithRed:0.70 green:0.10 blue:0.10 alpha:0.92]
+                                border:[UIColor colorWithRed:0.95 green:0.25 blue:0.25 alpha:0.95]]];
+    [self addSubview:[self makeButton:@"CROUCH" rect:CGRectMake(col1, rowBottom, btnD, btnD)
+                                color:[UIColor colorWithWhite:0.15 alpha:0.83]
+                                border:[UIColor colorWithWhite:0.7 alpha:0.7]]];
+    [self addSubview:[self makeButton:@"JUMP" rect:CGRectMake(col2, rowBottom, btnD, btnD)
+                                color:[UIColor colorWithWhite:0.15 alpha:0.83]
+                                border:[UIColor colorWithWhite:0.7 alpha:0.7]]];
+    [self addSubview:[self makeButton:@"SHOVE" rect:CGRectMake(col1, rowMiddle, btnD, btnD)
+                                color:[UIColor colorWithWhite:0.18 alpha:0.84]
+                                border:[UIColor colorWithRed:0.8 green:0.4 blue:0.1 alpha:0.9]]];
+    [self addSubview:[self makeButton:@"RELOAD" rect:CGRectMake(col2, rowMiddle, btnD, btnD)
+                                color:[UIColor colorWithWhite:0.18 alpha:0.84]
+                                border:[UIColor colorWithWhite:0.7 alpha:0.7]]];
+    [self addSubview:[self makeButton:@"USE" rect:CGRectMake(col3, rowBottom, btnD, btnD)
+                                color:[UIColor colorWithWhite:0.18 alpha:0.84]
+                                border:[UIColor colorWithRed:0.2 green:0.7 blue:0.9 alpha:0.9]]];
+    [self addSubview:[self makeButton:@"ZOOM" rect:CGRectMake(col3, rowTop, btnD, btnD)
+                                color:[UIColor colorWithWhite:0.18 alpha:0.84]
+                                border:[UIColor colorWithWhite:0.6 alpha:0.7]]];
 
-    // SHOVE / MELEE BUTTON
-    UIButton* shoveBtn = [self makeButton:@"SHOVE" rect:CGRectMake(rightMargin - 150, bottomMargin - 70, btnD, btnD)
-                                 color:[UIColor colorWithWhite:0.2 alpha:0.75]
-                                border:[UIColor colorWithRed:0.8 green:0.4 blue:0.1 alpha:0.8]];
-    [self addSubview:shoveBtn];
+    const CGFloat smallD = std::clamp(h * 0.125, CGFloat(44.0), CGFloat(52.0));
+    [self addSubview:[self makeButton:@"LIGHT" rect:CGRectMake(left + edgeX + stickSize + 16.0,
+                                                                 top + 10.0, smallD, smallD)
+                                  color:[UIColor colorWithWhite:0.16 alpha:0.82]
+                                 border:[UIColor colorWithRed:0.9 green:0.8 blue:0.2 alpha:0.8]]];
 
-    // RELOAD
-    UIButton* reloadBtn = [self makeButton:@"RELOAD" rect:CGRectMake(rightMargin - 75, bottomMargin - 175, btnD, btnD)
-                                  color:[UIColor colorWithWhite:0.2 alpha:0.75]
-                                 border:[UIColor colorWithWhite:0.7 alpha:0.6]];
-    [self addSubview:reloadBtn];
-
-    // JUMP
-    UIButton* jumpBtn = [self makeButton:@"JUMP" rect:CGRectMake(rightMargin, bottomMargin - 20, btnD, btnD)
-                                color:[UIColor colorWithWhite:0.2 alpha:0.75]
-                               border:[UIColor colorWithWhite:0.7 alpha:0.6]];
-    [self addSubview:jumpBtn];
-
-    // CROUCH
-    UIButton* crouchBtn = [self makeButton:@"CROUCH" rect:CGRectMake(rightMargin - 70, bottomMargin - 15, btnD, btnD)
-                                  color:[UIColor colorWithWhite:0.2 alpha:0.75]
-                                 border:[UIColor colorWithWhite:0.7 alpha:0.6]];
-    [self addSubview:crouchBtn];
-
-    // USE / INTERACT
-    UIButton* useBtn = [self makeButton:@"USE" rect:CGRectMake(rightMargin - 145, bottomMargin - 155, btnD, btnD)
-                               color:[UIColor colorWithWhite:0.2 alpha:0.75]
-                              border:[UIColor colorWithRed:0.2 green:0.7 blue:0.9 alpha:0.8]];
-    [self addSubview:useBtn];
-
-    // ZOOM / SCOPE
-    UIButton* scopeBtn = [self makeButton:@"ZOOM" rect:CGRectMake(rightMargin - 10, bottomMargin - 110, 48, 48)
-                                 color:[UIColor colorWithWhite:0.2 alpha:0.75]
-                                border:[UIColor colorWithWhite:0.6 alpha:0.5]];
-    [self addSubview:scopeBtn];
-
-    // FLASHLIGHT
-    UIButton* lightBtn = [self makeButton:@"LIGHT" rect:CGRectMake(w * 0.5 - 25, 20, 50, 40)
-                                 color:[UIColor colorWithWhite:0.2 alpha:0.65]
-                                border:[UIColor colorWithRed:0.9 green:0.8 blue:0.2 alpha:0.7]];
-    [self addSubview:lightBtn];
-
-    // 4. 5-Slot Left 4 Dead 2 Inventory Bar (Bottom-Center)
-    CGFloat barW = 250.0;
-    CGFloat slotW = 58.0;
-    CGFloat slotH = 46.0;
-    CGFloat barX = (w - barW) / 2.0;
-    CGFloat barY = h - slotH - 12.0;
+    // Inventory controls stay centered and keep enough spacing for four fingers.
+    const CGFloat slotW = std::clamp(layout.size.width * 0.068, CGFloat(48.0), CGFloat(58.0));
+    const CGFloat slotH = std::clamp(h * 0.12, CGFloat(40.0), CGFloat(46.0));
+    const CGFloat slotGap = 5.0;
+    const CGFloat barW = slotW * 4.0 + slotGap * 3.0;
+    const CGFloat barX = CGRectGetMidX(layout) - barW / 2.0;
+    const CGFloat barY = bottom - edgeY - slotH;
 
     NSArray* slotTitles = @[@"WEAPON", @"THROW", @"KIT", @"PILLS"];
     for (NSUInteger i = 0; i < slotTitles.count; ++i) {
-        CGRect slotRect = CGRectMake(barX + i * (slotW + 6.0), barY, slotW, slotH);
+        CGRect slotRect = CGRectMake(barX + i * (slotW + slotGap), barY, slotW, slotH);
         UIButton* slotBtn = [self makeButton:slotTitles[i] rect:slotRect
                                       color:[UIColor colorWithRed:0.1 green:0.14 blue:0.1 alpha:0.8]
                                      border:[UIColor colorWithRed:0.5 green:0.65 blue:0.4 alpha:0.8]];
@@ -212,13 +240,13 @@ static bool s_gamepad_connected = false;
         [self addSubview:slotBtn];
     }
 #if L4D2_TOUCH_SDL
-    [self addNavigationPadAtX:36 y:h - 92];
+    const CGFloat navD = std::clamp(h * 0.12, CGFloat(38.0), CGFloat(46.0));
+    [self addNavigationPadAtX:left + edgeX y:bottom - edgeY - navD * 3.0 diameter:navD];
 #endif
 }
 
 #if L4D2_TOUCH_SDL
-- (void)addNavigationPadAtX:(CGFloat)x y:(CGFloat)y {
-    const CGFloat d = 34;
+- (void)addNavigationPadAtX:(CGFloat)x y:(CGFloat)y diameter:(CGFloat)d {
     const UIColor* color = [UIColor colorWithWhite:0.12 alpha:0.76];
     NSArray* controls = @[
         @[@"↑", @(x + d), @(y)],
@@ -235,12 +263,16 @@ static bool s_gamepad_connected = false;
         [_navigationButtons addObject:button];
         [self addSubview:button];
     }
+    const CGFloat faceD = d + 6.0;
+    const CGFloat right = CGRectGetMaxX(UIEdgeInsetsInsetRect(self.bounds, _layoutInsets)) - 18.0;
+    const CGFloat bottom = CGRectGetMaxY(UIEdgeInsetsInsetRect(self.bounds, _layoutInsets)) - 18.0;
+    const CGFloat faceGap = 8.0;
     for (NSArray* item in @[
-        @[@"A", @(self.bounds.size.width - 108), @(self.bounds.size.height - 78)],
-        @[@"B", @(self.bounds.size.width - 58), @(self.bounds.size.height - 78)],
+        @[@"A", @(right - faceD * 2.0 - faceGap), @(bottom - faceD)],
+        @[@"B", @(right - faceD), @(bottom - faceD)],
     ]) {
         UIButton* button = [self makeButton:item[0]
-                                       rect:CGRectMake([item[1] doubleValue], [item[2] doubleValue], 46, 46)
+                                       rect:CGRectMake([item[1] doubleValue], [item[2] doubleValue], faceD, faceD)
                                       color:[UIColor colorWithWhite:0.12 alpha:0.82]
                                      border:nil];
         [_actionButtons removeObjectIdenticalTo:button];
@@ -256,10 +288,28 @@ static bool s_gamepad_connected = false;
     for (UIButton* button in _navigationButtons) button.hidden = !self.navigationMode;
     _leftStickBase.hidden = self.navigationMode;
     _lookArea.hidden = self.navigationMode;
-    [_modeButton setTitle:self.navigationMode ? @"GAME" : @"MENU" forState:UIControlStateNormal];
+    UIButtonConfiguration* modeConfig = _modeButton.configuration;
+    modeConfig.title = self.navigationMode ? @"GAME" : @"MENU";
+    modeConfig.attributedTitle = nil;
+    modeConfig.image = [UIImage systemImageNamed:self.navigationMode ? @"gamecontroller.fill" : @"list.bullet"];
+    modeConfig.imagePlacement = NSDirectionalRectEdgeLeading;
+    modeConfig.imagePadding = 5.0;
+    modeConfig.preferredSymbolConfigurationForImage =
+        [UIImageSymbolConfiguration configurationWithPointSize:14.0 weight:UIImageSymbolWeightSemibold];
+    _modeButton.accessibilityLabel = self.navigationMode ? @"Switch to game controls" : @"Switch to menu controls";
+    _modeButton.configuration = modeConfig;
 }
 
 - (void)toggleNavigationMode {
+    _moveTouchHash = 0;
+    _lookTouchHash = 0;
+    ++_lookSequence;
+#if L4D2_TOUCH_SDL
+    SetStick(SDL_GAMEPAD_AXIS_LEFTX, 0, 0);
+    SetStick(SDL_GAMEPAD_AXIS_RIGHTX, 0, 0);
+#endif
+    for (UIButton* button in _actionButtons) [self setButton:button pressed:NO];
+    for (UIButton* button in _navigationButtons) [self setButton:button pressed:NO];
 #if L4D2_TOUCH_SDL
     if (s_pad) {
         const SDL_GamepadButton button = self.navigationMode ? SDL_GAMEPAD_BUTTON_EAST : SDL_GAMEPAD_BUTTON_START;
@@ -273,45 +323,66 @@ static bool s_gamepad_connected = false;
     [self updateControlMode];
 }
 
-- (void)buildXboxPadMode:(CGFloat)w height:(CGFloat)h {
-    // Classic Xbox 360 overlay: Sticks, D-pad, ABXY, Triggers, Bumpers
-    CGFloat stickSize = 120.0;
-    _leftStickBase = [[UIView alloc] initWithFrame:CGRectMake(40, h - stickSize - 40, stickSize, stickSize)];
+- (void)buildXboxPadMode:(CGRect)layout {
+    const CGFloat left = CGRectGetMinX(layout);
+    const CGFloat right = CGRectGetMaxX(layout);
+    const CGFloat top = CGRectGetMinY(layout);
+    const CGFloat bottom = CGRectGetMaxY(layout);
+    const CGFloat h = layout.size.height;
+    const CGFloat edgeX = std::max(CGFloat(16.0), layout.size.width * 0.022);
+    const CGFloat edgeY = std::max(CGFloat(12.0), h * 0.035);
+    const CGFloat stickSize = std::clamp(h * 0.32, CGFloat(104.0), CGFloat(136.0));
+    _leftStickBase = [[UIView alloc] initWithFrame:CGRectMake(left + edgeX, bottom - edgeY - stickSize,
+                                                              stickSize, stickSize)];
     _leftStickBase.backgroundColor = [UIColor colorWithWhite:0.15 alpha:0.4];
     _leftStickBase.layer.cornerRadius = stickSize / 2.0;
     _leftStickBase.layer.borderWidth = 2.0;
     _leftStickBase.layer.borderColor = [UIColor colorWithWhite:0.8 alpha:0.3].CGColor;
     [self addSubview:_leftStickBase];
-    _leftStickThumb = [[UIView alloc] initWithFrame:CGRectMake(35, 35, 50, 50)];
+    const CGFloat thumbSize = stickSize * 0.42;
+    _leftStickThumb = [[UIView alloc] initWithFrame:CGRectMake((stickSize - thumbSize) / 2.0,
+                                                                (stickSize - thumbSize) / 2.0,
+                                                                thumbSize, thumbSize)];
     _leftStickThumb.backgroundColor = [UIColor colorWithWhite:0.9 alpha:0.6];
-    _leftStickThumb.layer.cornerRadius = 25;
+    _leftStickThumb.layer.cornerRadius = thumbSize / 2.0;
     [_leftStickBase addSubview:_leftStickThumb];
-    _lookArea = [[UIView alloc] initWithFrame:CGRectMake(w * 0.45, 0, w * 0.55, h * 0.8)];
+    _lookArea = [[UIView alloc] initWithFrame:CGRectMake(left + layout.size.width * 0.42, top + 52.0,
+                                                          layout.size.width * 0.58, h * 0.78)];
     [self addSubview:_lookArea];
 
-    // ABXY Diamond on right
-    CGFloat btnD = 50.0;
-    CGFloat cx = w - 100;
-    CGFloat cy = h - 100;
-    [self addSubview:[self makeButton:@"A" rect:CGRectMake(cx, cy + 35, btnD, btnD) color:[UIColor colorWithRed:0.1 green:0.6 blue:0.2 alpha:0.8] border:nil]];
-    [self addSubview:[self makeButton:@"B" rect:CGRectMake(cx + 35, cy, btnD, btnD) color:[UIColor colorWithRed:0.7 green:0.1 blue:0.1 alpha:0.8] border:nil]];
-    [self addSubview:[self makeButton:@"X" rect:CGRectMake(cx - 35, cy, btnD, btnD) color:[UIColor colorWithRed:0.1 green:0.4 blue:0.8 alpha:0.8] border:nil]];
-    [self addSubview:[self makeButton:@"Y" rect:CGRectMake(cx, cy - 35, btnD, btnD) color:[UIColor colorWithRed:0.8 green:0.7 blue:0.1 alpha:0.8] border:nil]];
+    // Xbox ABXY diamond and shoulder controls scale with the usable landscape height.
+    const CGFloat btnD = std::clamp(h * 0.15, CGFloat(50.0), CGFloat(62.0));
+    const CGFloat offset = btnD;
+    const CGFloat cx = right - edgeX - offset - btnD;
+    const CGFloat cy = bottom - edgeY - offset - btnD;
+    [self addSubview:[self makeButton:@"A" rect:CGRectMake(cx, cy + offset, btnD, btnD) color:[UIColor colorWithRed:0.1 green:0.6 blue:0.2 alpha:0.8] border:nil]];
+    [self addSubview:[self makeButton:@"B" rect:CGRectMake(cx + offset, cy, btnD, btnD) color:[UIColor colorWithRed:0.7 green:0.1 blue:0.1 alpha:0.8] border:nil]];
+    [self addSubview:[self makeButton:@"X" rect:CGRectMake(cx - offset, cy, btnD, btnD) color:[UIColor colorWithRed:0.1 green:0.4 blue:0.8 alpha:0.8] border:nil]];
+    [self addSubview:[self makeButton:@"Y" rect:CGRectMake(cx, cy - offset, btnD, btnD) color:[UIColor colorWithRed:0.8 green:0.7 blue:0.1 alpha:0.8] border:nil]];
 
     // Bumpers & Triggers
-    [self addSubview:[self makeButton:@"LT" rect:CGRectMake(30, 20, 60, 44) color:[UIColor colorWithWhite:0.2 alpha:0.7] border:nil]];
-    [self addSubview:[self makeButton:@"LB" rect:CGRectMake(100, 20, 60, 44) color:[UIColor colorWithWhite:0.2 alpha:0.7] border:nil]];
-    [self addSubview:[self makeButton:@"RB" rect:CGRectMake(w - 160, 20, 60, 44) color:[UIColor colorWithWhite:0.2 alpha:0.7] border:nil]];
-    [self addSubview:[self makeButton:@"RT" rect:CGRectMake(w - 90, 20, 60, 44) color:[UIColor colorWithRed:0.7 green:0.1 blue:0.1 alpha:0.8] border:nil]];
+    const CGFloat shoulderW = std::clamp(layout.size.width * 0.075, CGFloat(58.0), CGFloat(72.0));
+    const CGFloat shoulderH = std::clamp(h * 0.12, CGFloat(38.0), CGFloat(46.0));
+    [self addSubview:[self makeButton:@"LT" rect:CGRectMake(left + edgeX, top + edgeY, shoulderW, shoulderH)
+                                color:[UIColor colorWithWhite:0.2 alpha:0.78] border:nil]];
+    [self addSubview:[self makeButton:@"LB" rect:CGRectMake(left + edgeX + shoulderW + 8.0, top + edgeY,
+                                                              shoulderW, shoulderH)
+                                color:[UIColor colorWithWhite:0.2 alpha:0.78] border:nil]];
+    [self addSubview:[self makeButton:@"RB" rect:CGRectMake(right - edgeX - shoulderW * 2.0 - 8.0,
+                                                              top + edgeY, shoulderW, shoulderH)
+                                color:[UIColor colorWithWhite:0.2 alpha:0.78] border:nil]];
+    [self addSubview:[self makeButton:@"RT" rect:CGRectMake(right - edgeX - shoulderW, top + edgeY,
+                                                              shoulderW, shoulderH)
+                                color:[UIColor colorWithRed:0.7 green:0.1 blue:0.1 alpha:0.84] border:nil]];
 #if L4D2_TOUCH_SDL
-    [self addNavigationPadAtX:36 y:h - 92];
+    const CGFloat navD = std::clamp(h * 0.12, CGFloat(38.0), CGFloat(46.0));
+    [self addNavigationPadAtX:left + edgeX y:bottom - edgeY - navD * 3.0 diameter:navD];
 #endif
 }
 
 - (UIButton*)makeButton:(NSString*)title rect:(CGRect)rect color:(UIColor*)color border:(UIColor*)borderColor {
     UIButton* btn = [UIButton buttonWithType:UIButtonTypeCustom];
     btn.frame = rect;
-    btn.backgroundColor = color;
     btn.layer.cornerRadius = MIN(rect.size.width, rect.size.height) * 0.34;
     btn.layer.shadowColor = UIColor.blackColor.CGColor;
     btn.layer.shadowOpacity = 0.32;
@@ -319,7 +390,6 @@ static bool s_gamepad_connected = false;
     btn.layer.shadowOffset = CGSizeMake(0, 2);
     btn.layer.borderColor = borderColor ? borderColor.CGColor : [UIColor colorWithWhite:1 alpha:0.36].CGColor;
     btn.layer.borderWidth = borderColor ? 1.5 : 1;
-    [btn setTitle:title forState:UIControlStateNormal];
     NSDictionary<NSString*, NSString*>* symbols = @{
         @"FIRE": @"scope", @"SHOVE": @"hand.raised.fill", @"RELOAD": @"arrow.clockwise",
         @"JUMP": @"figure.jump", @"CROUCH": @"figure.crouching", @"USE": @"hand.tap.fill",
@@ -330,18 +400,32 @@ static bool s_gamepad_connected = false;
         @"LT": @"target", @"RT": @"scope", @"LB": @"arrow.left.to.line", @"RB": @"arrow.right.to.line",
     };
     NSString* symbol = symbols[title];
+    UIButtonConfiguration* buttonConfig = [UIButtonConfiguration filledButtonConfiguration];
+    buttonConfig.title = title;
+    buttonConfig.baseBackgroundColor = color;
+    buttonConfig.baseForegroundColor = UIColor.whiteColor;
+    buttonConfig.contentInsets = NSDirectionalEdgeInsetsMake(4, 3, 4, 3);
+    buttonConfig.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+    buttonConfig.attributedTitle = [[NSAttributedString alloc]
+        initWithString:title
+            attributes:@{NSFontAttributeName: [UIFont systemFontOfSize:MIN(13.0, MAX(9.0, rect.size.height * 0.22))
+                                                                  weight:UIFontWeightBold],
+                         NSForegroundColorAttributeName: UIColor.whiteColor}];
     if (symbol) {
-        [btn setImage:[UIImage systemImageNamed:symbol] forState:UIControlStateNormal];
+        buttonConfig.image = [UIImage systemImageNamed:symbol];
+        buttonConfig.imagePlacement = NSDirectionalRectEdgeTop;
+        buttonConfig.imagePadding = 2.0;
         btn.tintColor = UIColor.whiteColor;
-        btn.imageView.preferredSymbolConfiguration =
-            [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-        btn.titleEdgeInsets = UIEdgeInsetsMake(0, 3, 0, 0);
+        buttonConfig.preferredSymbolConfigurationForImage =
+            [UIImageSymbolConfiguration configurationWithPointSize:MIN(19.0, MAX(14.0, rect.size.height * 0.31))
+                                                              weight:UIImageSymbolWeightSemibold];
     }
-    btn.titleLabel.font = [UIFont systemFontOfSize:13 weight:UIFontWeightBold];
-    [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    btn.configuration = buttonConfig;
+    btn.titleLabel.font = [UIFont systemFontOfSize:MIN(13.0, MAX(9.0, rect.size.height * 0.22))
+                                             weight:UIFontWeightBold];
     btn.titleLabel.adjustsFontSizeToFitWidth = YES;
-    btn.titleLabel.minimumScaleFactor = 0.72;
-    [btn setTitleColor:[UIColor colorWithWhite:0.7 alpha:1.0] forState:UIControlStateHighlighted];
+    btn.titleLabel.minimumScaleFactor = 0.68;
+    btn.accessibilityLabel = title;
     [btn addTarget:self action:@selector(buttonDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
     [btn addTarget:self action:@selector(buttonUp:) forControlEvents:UIControlEventTouchUpInside |
         UIControlEventTouchUpOutside | UIControlEventTouchCancel | UIControlEventTouchDragExit];
@@ -352,7 +436,7 @@ static bool s_gamepad_connected = false;
 - (void)setButton:(UIButton*)button pressed:(BOOL)pressed {
 #if L4D2_TOUCH_SDL
     if (!s_pad) return;
-    NSString* title = [button titleForState:UIControlStateNormal];
+    NSString* title = button.configuration.title ?: button.configuration.attributedTitle.string ?: [button titleForState:UIControlStateNormal];
     if ([title isEqualToString:@"FIRE"] || [title isEqualToString:@"RT"] ||
         [title isEqualToString:@"SHOVE"] || [title isEqualToString:@"LT"]) {
         const bool right = [title isEqualToString:@"FIRE"] || [title isEqualToString:@"RT"];
