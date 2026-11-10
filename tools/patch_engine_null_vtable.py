@@ -175,6 +175,34 @@ patch_function(
 """,
 )
 
+# The profiling hook is optional. Each wrapper must still delegate the real
+# allocator operation when the hook is missing during engine startup.
+for name, on_missing in (
+    ("sub_86C31540", "goto loc_86C31590;"),
+    ("sub_86C315B8", "goto loc_86C3160C;"),
+    ("sub_86C31640", "goto loc_86C31694;"),
+    ("sub_86C316C0", "goto loc_86C31718;"),
+    ("sub_86C31748", "goto loc_86C3179C;"),
+    ("sub_86C317C8", "goto loc_86C31818;"),
+    ("sub_86C31840", "goto loc_86C31898;"),
+    ("sub_86C318C8", "return;"),
+    ("sub_86C31938", "goto loc_86C31984;"),
+):
+    if name != "sub_86C31938":
+        patch_function(
+            name, old_anchor,
+            old_anchor.replace("\t// lwz r10,0(r3)",
+                               f"\tif (ctx.r3.u32 == 0) {on_missing}\n\t// lwz r10,0(r3)"),
+        )
+    for reg, load, next_instruction in (
+        ("r10", "ctx.r10.u64 = REX_LOAD_U32(ctx.r3.u32 + 0);", "lwz r9,512(r10)"),
+        ("r9", "ctx.r9.u64 = REX_LOAD_U32(ctx.r10.u32 + 512);", "mtctr r9"),
+    ):
+        patch_function(
+            name, f"\t{load}\n\t// {next_instruction}\n",
+            f"\t{load}\n\tif (ctx.{reg}.u32 == 0) {on_missing}\n\t// {next_instruction}\n",
+        )
+
 # The zeroing allocator wrapper must propagate allocation failure before memset.
 patch_function(
     "sub_86C37F58",
