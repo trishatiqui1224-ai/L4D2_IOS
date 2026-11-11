@@ -215,3 +215,18 @@ patch_function(
 \t}
 """,
 )
+
+# Interface lookup can run before its registry exists. Return the same null
+# result as the normal lookup miss, so the caller still sets its failure flag.
+patch_function(
+    "sub_86E13C10",
+    """\tREX_FUNC_PROLOGUE();
+\tuint32_t ea{};
+\t// mflr r12
+""",
+    """\tREX_FUNC_PROLOGUE();
+\tif (ctx.r3.u32 == 0) return;
+\tuint32_t ea{};
+\t// mflr r12
+""",
+)
