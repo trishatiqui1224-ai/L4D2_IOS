@@ -230,3 +230,28 @@ patch_function(
 \t// mflr r12
 """,
 )
+
+# Startup failure can reach shutdown before the display object exists.
+# Skip its virtual call and still destroy the temporary startup state.
+patch_function(
+    "sub_86C842F8",
+    """\tctx.r3.u64 = REX_LOAD_U32(ctx.r8.u32 + -9688);
+\t// lwz r7,0(r3)
+""",
+    """\tctx.r3.u64 = REX_LOAD_U32(ctx.r8.u32 + -9688);
+\tif (ctx.r3.u32 == 0) goto destroy_startup_state;
+\t// lwz r7,0(r3)
+""",
+)
+patch_function(
+    "sub_86C842F8",
+    """\tctx.lr = 0x86C8438C;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t// addi r3,r1,80
+""",
+    """\tctx.lr = 0x86C8438C;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+destroy_startup_state:
+\t// addi r3,r1,80
+""",
+)
