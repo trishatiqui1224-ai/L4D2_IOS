@@ -134,24 +134,19 @@ def step(n, text):
 
 
 def ensure_git_tags(sdk):
-    """Ensure v* git tag is reachable so rex_compute_version resolves cleanly."""
-    chk = subprocess.run(
-        ["git", "describe", "--tags", "--match", "v*"],
+    """Expose the pinned SDK version as an exact tag in the local checkout."""
+    subprocess.run(["git", "tag", "-f", ANDROID.SDK_TAG, "HEAD"], cwd=sdk, check=True)
+    resolved = subprocess.run(
+        ["git", "describe", "--tags", "--exact-match", "--match",
+         "v[0-9]*.[0-9]*.[0-9]*", "--exclude", "*-*"],
         cwd=sdk,
         capture_output=True,
         text=True,
-    )
-    if chk.returncode != 0:
-        subprocess.run(["git", "fetch", "--tags", "--depth=1"], cwd=sdk, capture_output=True)
-        chk2 = subprocess.run(
-            ["git", "describe", "--tags", "--match", "v*"],
-            cwd=sdk,
-            capture_output=True,
-            text=True,
-        )
-        if chk2.returncode != 0:
-            subprocess.run(["git", "tag", "-f", "v0.10.0", "HEAD"], cwd=sdk, capture_output=True)
-            print("  [ok] Tagged v0.10.0 on HEAD for rex_compute_version")
+        check=True,
+    ).stdout.strip()
+    if resolved != ANDROID.SDK_TAG:
+        sys.exit(f"[ERROR] Expected SDK version {ANDROID.SDK_TAG}, Git resolved {resolved}")
+    print(f"  [ok] ReXGlue CMake version tag: {resolved}")
 
 
 def safeguard_vulkan_loader(sdk):
@@ -493,7 +488,6 @@ def main():
 
     step(1, f"SDK {ANDROID.SDK_TAG}")
     ANDROID.clonar(sdk)
-    ensure_git_tags(sdk)
     ANDROID.reparar_symlinks(sdk)
 
     step(2, "hells-gate's Android SDK patch: ARM64 barriers")

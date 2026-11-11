@@ -117,9 +117,6 @@ jobs:
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_import_resolution.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_dllmain_log.py --status
           L4D2_SDK="${GITHUB_WORKSPACE}/../rexglue-sdk-ios" python3 tools/ios/patch_ios_xex_load.py --status
-          if [ -d "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" ]; then
-            (cd "${GITHUB_WORKSPACE}/../rexglue-sdk-ios" && git tag -f v0.10.0 HEAD 2>/dev/null || true)
-          fi
 
       - name: Configure CMake for iOS (ARM64 Native)
         run: |
