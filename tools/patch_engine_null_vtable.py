@@ -1,4 +1,4 @@
-"""Restore omitted engine initializers and guard partial startup and shutdown."""
+"""Restore omitted guest routines and guard partial startup and shutdown."""
 
 from pathlib import Path
 
@@ -375,6 +375,62 @@ patch_function(
 """,
     module="datacache",
 )
+
+
+def restore_indirect_target(name, return_address, target, body, *, module="engine"):
+    call = f"\tctx.lr = 0x{return_address};\n\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\n"
+    patch_function(
+        name, call,
+        f"\tctx.lr = 0x{return_address};\n\tif (ctx.ctr.u32 == 0x{target}u) {{\n"
+        + body + "\t} else {\n\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\n\t}\n",
+        module=module,
+    )
+
+
+# This shader API leaf reads one state bit and forwards it through vtable
+# slot 0x468. Without it, the shader API loop silently skipped the operation.
+restore_indirect_target(
+    "sub_852804A0", "85280530", "8527FDC0",
+    """\t\tif (ctx.r3.u32 != 0) {
+\t\t\tctx.r11.s64 = -2059534336; // lis r11,0x853E
+\t\t\tctx.r10.u64 = REX_LOAD_U8(ctx.r3.u32 + 0x45);
+\t\t\tctx.r4.u64 = (ctx.r10.u32 >> 4) & 1u;
+\t\t\tctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + 0xE88);
+\t\t\tif (ctx.r3.u32 != 0) {
+\t\t\t\tctx.r9.u64 = REX_LOAD_U32(ctx.r3.u32);
+\t\t\t\tif (ctx.r9.u32 != 0) {
+\t\t\t\t\tctx.r8.u64 = REX_LOAD_U32(ctx.r9.u32 + 0x468);
+\t\t\t\t\tctx.ctr.u64 = ctx.r8.u64;
+\t\t\t\t\tif (ctx.ctr.u32 != 0) REX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t\t\t\t}
+\t\t\t}
+\t\t}
+""",
+    module="shaderapidx9",
+)
+
+# Two engine thunks adjust the receiver before tail-calling a compiled method.
+for name, return_address, target, adjustment, destination in (
+    ("sub_86DCB5C8", "86DCB6E4", "86DC0A60", 4, "86DC0AF0"),
+    ("sub_86DF4450", "86DF44D0", "86DC7930", 36, "86DC74D8"),
+):
+    restore_indirect_target(
+        name, return_address, target,
+        f"\t\tctx.r3.s64 -= {adjustment};\n\t\tREX_CALL_INDIRECT_FUNC(0x{destination}u);\n",
+    )
+
+# Both call sites use the same omitted virtual forwarding thunk.
+for name, return_address in (("sub_86DBB188", "86DBB250"), ("sub_86DCB5C8", "86DCB6CC")):
+    restore_indirect_target(
+        name, return_address, "86DC59A8",
+        """\t\tctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 72);
+\t\tctx.r3.s64 = ctx.r11.s64 + 64;
+\t\tctx.r11.u64 = REX_LOAD_U32(ctx.r11.u32 + 64);
+\t\tctx.r11.u64 = REX_LOAD_U32(ctx.r11.u32 + 20);
+\t\tctx.ctr.u64 = ctx.r11.u64;
+\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+""",
+    )
 
 # Shutdown also runs if the launcher could not connect the model-cache service.
 patch_function(
