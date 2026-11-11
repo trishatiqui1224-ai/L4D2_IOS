@@ -255,3 +255,19 @@ destroy_startup_state:
 \t// addi r3,r1,80
 """,
 )
+
+# The rest of shutdown can also run after only some subsystems initialized.
+# Leave the independent teardown calls in place.
+for load, vtable, return_address in (
+    ("ctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + -14884);", "lwz r10,0(r3)", "86C825CC"),
+    ("ctx.r3.u64 = REX_LOAD_U32(ctx.r8.u32 + 12368);", "lwz r7,0(r3)", "86C825E4"),
+    ("ctx.r3.u64 = REX_LOAD_U32(ctx.r4.u32 + -7396);", "lwz r11,0(r3)", "86C82610"),
+):
+    label = f"loc_{return_address}"
+    patch_function(
+        "sub_86C82588",
+        f"\t{load}\n\t// {vtable}\n",
+        f"\t{load}\n\tif (ctx.r3.u32 == 0) goto {label};\n\t// {vtable}\n",
+    )
+    call = f"\tctx.lr = 0x{return_address};\n\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\n"
+    patch_function("sub_86C82588", call, f"{call}{label}:\n")
