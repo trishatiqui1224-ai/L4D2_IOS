@@ -133,22 +133,6 @@ def step(n, text):
     print(f"\n== {n}. {text}")
 
 
-def ensure_git_tags(sdk):
-    """Expose the pinned SDK version as an exact tag in the local checkout."""
-    subprocess.run(["git", "tag", "-f", ANDROID.SDK_TAG, "HEAD"], cwd=sdk, check=True)
-    resolved = subprocess.run(
-        ["git", "describe", "--tags", "--exact-match", "--match",
-         "v[0-9]*.[0-9]*.[0-9]*", "--exclude", "*-*"],
-        cwd=sdk,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-    if resolved != ANDROID.SDK_TAG:
-        sys.exit(f"[ERROR] Expected SDK version {ANDROID.SDK_TAG}, Git resolved {resolved}")
-    print(f"  [ok] ReXGlue CMake version tag: {resolved}")
-
-
 def safeguard_vulkan_loader(sdk):
     """Extra safeguard: quote ${SYSTEM_PROCESSOR} and ${CMAKE_SYSTEM_PROCESSOR} in vulkan-loader."""
     loader_cmake = sdk / "thirdparty" / "vulkan-loader" / "loader" / "CMakeLists.txt"
@@ -167,16 +151,22 @@ def safeguard_vulkan_loader(sdk):
 
 
 def safeguard_rex_version(sdk):
-    """Ensure rex_version.cmake cleanly resolves 0.10.0 without warnings on iOS."""
+    """Use the pinned SDK release for the prepared iOS checkout."""
     ver_cmake = sdk / "cmake" / "rex_version.cmake"
-    if ver_cmake.exists():
-        txt = ver_cmake.read_text(encoding="utf-8")
-        old_warn = 'message(WARNING\n            "rex_compute_version: no v* tag reachable from HEAD.'
-        if old_warn in txt:
-            new_warn = 'set(${out_var} "0.10.0" PARENT_SCOPE)\n        return()\n        message(DEBUG\n            "rex_compute_version: no v* tag reachable from HEAD.'
-            txt = txt.replace(old_warn, new_warn)
-            ver_cmake.write_text(txt, encoding="utf-8")
-            print("  [ok] Safeguarded rex_version.cmake (clean 0.10.0 fallback)")
+    text = ver_cmake.read_text(encoding="utf-8")
+    anchor = "function(rex_resolve_version out_var)\n"
+    version = ANDROID.SDK_TAG.removeprefix("v")
+    pinned = (
+        anchor
+        + "    # This SDK checkout is prepared from the project's pinned release.\n"
+        + f'    set(${{out_var}} "{version}" PARENT_SCOPE)\n'
+        + "    return()\n"
+    )
+    if pinned not in text:
+        if text.count(anchor) != 1:
+            sys.exit(f"[ERROR] Cannot locate ReXGlue version resolver in {ver_cmake}")
+        ver_cmake.write_text(text.replace(anchor, pinned, 1), encoding="utf-8")
+    print(f"  [ok] Pinned ReXGlue CMake version: {version}")
 
 
 def safeguard_fpscr(sdk):
@@ -508,7 +498,6 @@ def main():
     safeguard_fpscr(sdk)
     safeguard_resolve_warning(sdk)
     safeguard_preset_layer(sdk)
-    ensure_git_tags(sdk)
 
     print(f"\n[ok] SDK ready in {sdk}")
     print("     Next: build from ios/ (cmake --preset ios).")

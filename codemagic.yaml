@@ -22,7 +22,7 @@ workflows:
     scripts:
       - name: Select Xcode & Verify Toolchain
         script: |
-          echo "[CI] Selecting active Xcode..."
+          echo "[CI] Source revision: $(git rev-parse HEAD)"
           xcodebuild -version
           xcrun --sdk iphoneos --find clang
           xcrun --sdk iphoneos --find clang++
