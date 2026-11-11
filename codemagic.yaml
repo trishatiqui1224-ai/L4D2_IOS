@@ -1,6 +1,6 @@
 workflows:
   build-l4d2-recomp-ios:
-    name: Build Left 4 Dead 2 Recomp iOS (ARM64)
+    name: Build Left 4 Dead 2 unsigned iOS IPA (ARM64)
     max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
@@ -27,15 +27,17 @@ workflows:
           xcrun --sdk iphoneos --find clang
           xcrun --sdk iphoneos --find clang++
 
-      - name: Install Python Dependencies & Tools
+      - name: Install Tools and Prepare App Assets
         script: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install pillow
-          brew install cmake ninja
-
-      - name: Setup AppIcon & Assets Catalog
-        script: |
-          python3 tools/generate_appicon.py
+          set -euo pipefail
+          for tool in cmake ninja; do
+            if ! command -v "$tool" >/dev/null; then
+              brew install "$tool"
+            fi
+          done
+          python3 -m venv .venv
+          .venv/bin/python -m pip install pillow
+          .venv/bin/python tools/generate_appicon.py
 
       - name: Verify Disc Manifest & Generate Headers
         script: |
@@ -43,17 +45,63 @@ workflows:
 
       - name: Run Host Unit Tests
         script: |
-          clang++ -std=c++20 tools/test_argv_dedup.cpp -o test_argv_dedup
-          ./test_argv_dedup
-          clang++ -std=c++20 tools/test_manifest_verifier.cpp -o test_manifest_verifier
-          ./test_manifest_verifier
+          set -euo pipefail
+          for test in test_argv_dedup test_manifest_verifier; do
+            clang++ -std=c++20 -fsanitize=address,undefined "tools/$test.cpp" -o "$TMPDIR/$test"
+            "$TMPDIR/$test"
+          done
 
-      - name: Configure and Build iOS Target
+      - name: Restore and Patch Recompiled Sources
         script: |
-          chmod +x build_ipa.sh
-          ./build_ipa.sh
+          set -euo pipefail
+          python3 tools/generate_code.py --unpack-cache
+          python3 tools/make_stubs.py
+          python3 tools/patch_safe_indirect_dispatch.py --apply
+          python3 tools/patch_cross_dll_thunks.py --apply
+          python3 tools/patch_unique_entry_points.py --apply
+          python3 tools/patch_tier0_null_check.py --apply
+          python3 tools/patch_engine_null_vtable.py
+          python3 tools/patch_engine_cleanup.py
+          python3 tools/verify_recomp_dispatch.py
+
+      - name: Prepare ReXGlue SDK and MoltenVK
+        script: |
+          set -euo pipefail
+          python3 tools/ios/prepare_sdk.py --sdk "$CM_BUILD_DIR/../rexglue-sdk-ios"
+
+      - name: Configure and Compile the iOS App
+        script: |
+          set -euo pipefail
+          cc="$(xcrun --sdk iphoneos --find clang)"
+          cxx="$(xcrun --sdk iphoneos --find clang++)"
+          cmake -S ios -B build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_SYSTEM_PROCESSOR=arm64 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.4 \
+            -DREX_PLATFORM_IOS=1 \
+            -DL4D2_SDK="$CM_BUILD_DIR/../rexglue-sdk-ios" \
+            -DCMAKE_C_COMPILER="$cc" \
+            -DCMAKE_CXX_COMPILER="$cxx" \
+            -DCMAKE_OBJC_COMPILER="$cc" \
+            -DCMAKE_OBJCXX_COMPILER="$cxx" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY=
+          cmake --build build --parallel 4
+
+      - name: Package and Verify the Unsigned IPA
+        script: |
+          set -euo pipefail
+          mkdir -p dist
+          python3 tools/package_ipa.py --out dist/L4D2-Recomp-iOS.ipa
+          python3 tools/verify_ios_bundle.py --ipa dist/L4D2-Recomp-iOS.ipa
+          cd dist
+          shasum -a 256 L4D2-Recomp-iOS.ipa > SHA256SUMS.txt
 
     artifacts:
-      - build/L4D2-Recomp-iOS.ipa
-      - build/L4D2Recomp.app
+      - dist/L4D2-Recomp-iOS.ipa
+      - dist/SHA256SUMS.txt
 

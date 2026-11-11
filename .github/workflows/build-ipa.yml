@@ -1,11 +1,6 @@
 name: Build Left 4 Dead 2 iOS IPA
 
 on:
-  push:
-    branches: [main, master]
-    tags: ['v*']
-  pull_request:
-    branches: [main, master]
   workflow_dispatch:
     inputs:
       build_type:
