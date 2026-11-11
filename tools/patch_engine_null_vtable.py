@@ -1,4 +1,4 @@
-"""Guard startup virtual calls whose engine-owned singleton is not ready."""
+"""Restore omitted engine initializers and guard partial startup and shutdown."""
 
 from pathlib import Path
 
@@ -271,3 +271,47 @@ for load, vtable, return_address in (
     )
     call = f"\tctx.lr = 0x{return_address};\n\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\n"
     patch_function("sub_86C82588", call, f"{call}{label}:\n")
+
+
+# The disc's CRT initializer table references these small tail-call functions,
+# which have no .pdata entries. The recompiler omitted their entry points.
+# Each row preserves the two immediate arguments encoded by the original PPC.
+CRT_INITIALIZER_GROUPS = (
+    (0x86EF0040, 0x86CB1DD8, (
+        (2, 0x3AA8), (3, 0x3B90), (4, 0x3C00), (6, 0x3C70),
+        (8, 0x3D48), (9, 0x3DB8), (10, 0x3FA8), (19, 0x41A8),
+        (18, 0x3488), (20, 0x3898),
+    )),
+    (0x86EF00E0, 0x86CB1E10, (
+        (1, 0x5910), (2, 0x59D8), (4, 0x5F50), (6, 0x66E0),
+        (3, 0x6850), (8, 0x69B0), (10, 0x7930), (19, 0x70F8),
+        (18, 0x7270), (20, 0x75F8),
+    )),
+)
+
+initializer_dispatch = ["\tswitch (ctx.ctr.u32) {\n"]
+for start, target, arguments in CRT_INITIALIZER_GROUPS:
+    for index, (slot, offset) in enumerate(arguments):
+        initializer_dispatch.extend((
+            f"\tcase 0x{start + index * 16:08X}u:\n",
+            "\t\tctx.r11.s64 = -2033516544; // lis r11,0x86CB\n",
+            f"\t\tctx.r3.s64 = {slot};\n",
+            f"\t\tctx.r4.s64 = ctx.r11.s64 + 0x{offset:04X};\n",
+            f"\t\tREX_CALL_INDIRECT_FUNC(0x{target:08X}u);\n",
+            "\t\tbreak;\n",
+        ))
+initializer_dispatch.append("""\tcase 0x86EF0180u:
+\t\tctx.r11.s64 = -2031091712; // lis r11,0x86F0
+\t\tctx.r3.s64 = ctx.r11.s64 + 0x1198;
+\t\tREX_CALL_INDIRECT_FUNC(0x86EBF9E0u);
+\t\tbreak;
+\tdefault:
+\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t\tbreak;
+\t}
+""")
+patch_function(
+    "sub_86EDD968",
+    "\tctx.lr = 0x86EDDA20;\n\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\nloc_86EDDA20:\n",
+    "\tctx.lr = 0x86EDDA20;\n" + "".join(initializer_dispatch) + "loc_86EDDA20:\n",
+)
