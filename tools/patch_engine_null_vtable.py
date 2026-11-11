@@ -3,11 +3,11 @@
 from pathlib import Path
 
 
-ENGINE_DIR = Path(__file__).resolve().parents[1] / "generated" / "engine_360"
+GENERATED = Path(__file__).resolve().parents[1] / "generated"
 
 
-def patch_function(name: str, anchor: str, replacement: str) -> bool:
-    for source in ENGINE_DIR.glob("l4d2_engine_recomp.*.cpp"):
+def patch_function(name: str, anchor: str, replacement: str, *, module: str = "engine") -> bool:
+    for source in (GENERATED / f"{module}_360").glob(f"l4d2_{module}_recomp.*.cpp"):
         text = source.read_text(encoding="utf-8")
         marker = f"DEFINE_REX_FUNC({name}) {{"
         start = text.find(marker)
@@ -355,5 +355,35 @@ patch_function(
 \tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
 clear_cvar_registration:
 \t// li r7,0
+""",
+)
+
+# The original factory at 0x832ABB08 has no compiled entry. Its entire body
+# loads the model-cache singleton address into r3 and returns.
+patch_function(
+    "sub_832905F0",
+    """\tctx.lr = 0x8329061C;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+""",
+    """\tctx.lr = 0x8329061C;
+\tif (ctx.ctr.u32 == 0x832ABB08u) {
+\t\tctx.r11.s64 = -2094071808; // lis r11,0x832F
+\t\tctx.r3.s64 = ctx.r11.s64 - 16012;
+\t} else {
+\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t}
+""",
+    module="datacache",
+)
+
+# Shutdown also runs if the launcher could not connect the model-cache service.
+patch_function(
+    "sub_86D104D0",
+    """\tctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + -11264);
+\t// lwz r10,0(r3)
+""",
+    """\tctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + -11264);
+\tif (ctx.r3.u32 == 0) return;
+\t// lwz r10,0(r3)
 """,
 )
