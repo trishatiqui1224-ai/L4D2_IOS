@@ -184,6 +184,12 @@ extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t ta
         }
     }
 
+    if (__builtin_expect(target_addr == 0x832ABB08u, 0)) {
+        ctx.r11.s64 = -2094071808; // lis r11, 0x832F
+        ctx.r3.s64 = ctx.r11.s64 - 16012; // 0x832EC174 (MDLCache / VModelLoader singleton)
+        return;
+    }
+
     PPCFunc* fn = LookupGlobalFunction(base, target_addr);
     if (__builtin_expect(fn != nullptr, 1)) {
         fn(ctx, base);
@@ -329,6 +335,16 @@ extern "C" void sub_82E1BF50(PPCContext& ctx, uint8_t* base) {
 }
 extern "C" void __imp__sub_82E1BF50(PPCContext& ctx, uint8_t* base) {
     sub_82E1BF50(ctx, base);
+}
+
+// 5. datacache_360:0x832ABB08 - MDLCache / VModelLoader singleton factory thunk
+// lis r11, 0x832F (-2094071808); addi r3, r11, -16012 (0x832EC174); blr
+extern "C" void sub_832ABB08(PPCContext& ctx, uint8_t* base) {
+    ctx.r11.s64 = -2094071808;
+    ctx.r3.s64 = ctx.r11.s64 - 16012;
+}
+extern "C" void __imp__sub_832ABB08(PPCContext& ctx, uint8_t* base) {
+    sub_832ABB08(ctx, base);
 }
 
 namespace l4d2 {
@@ -555,6 +571,7 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
     register_leaf(0x82E1BF50, &sub_82E1BF50, "vstdlib_360:0x012 (sub_82E1BF50)");
     register_leaf(0x82015D78, &sub_82015D78, "default:0x82015D78 (sub_82015D78)");
     register_leaf(0x82011120, &sub_82011120, "default:0x82011120 (NotifyModuleListeners)");
+    register_leaf(0x832ABB08, &sub_832ABB08, "datacache_360:0x832ABB08 (MDLCacheFactory)");
 }
 
 void ModuleLoader::Shutdown() {
@@ -604,9 +621,8 @@ void ModuleLoader::PreloadSourceModules(rex::system::KernelState* kernel_state) 
         preload_one(desc);
     }
     L4D2_LOG_INFO("ModuleLoader", "Pass 1 complete: All modules pre-mapped and cross-DLL imports wired");
-#if defined(_WIN32)
-    // On Windows, guest memory uses MEM_RESERVE until LoadUserModule commits each module's pages.
-    // Patch fallback allocator pointers only after Pass 1 has mapped them and only if committed & null.
+    // Patch fallback allocator pointers after Pass 1 has mapped each module's pages.
+    // On Windows, verify page commit and protection; on POSIX/iOS the arena is already mapped.
     if (auto* mem = kernel_state->memory()) {
         if (uint8_t* base = mem->virtual_membase()) {
             const struct { uint32_t addr; uint32_t fallback; } kFallbackSlots[] = {
@@ -623,26 +639,35 @@ void ModuleLoader::PreloadSourceModules(rex::system::KernelState* kernel_state) 
                 {0x871C0000u, 0x82C406D0u},
             };
             for (const auto& s : kFallbackSlots) {
+                bool is_committed_and_writable = true;
+#if defined(_WIN32)
                 MEMORY_BASIC_INFORMATION mbi{};
-                if (VirtualQuery(base + s.addr, &mbi, sizeof(mbi)) == sizeof(mbi) &&
-                    mbi.State == MEM_COMMIT) {
+                if (VirtualQuery(base + s.addr, &mbi, sizeof(mbi)) != sizeof(mbi) ||
+                    mbi.State != MEM_COMMIT) {
+                    is_committed_and_writable = false;
+                } else {
                     const DWORD writable_mask =
                         PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+                    if ((mbi.Protect & writable_mask) == 0) {
+                        is_committed_and_writable = false;
+                    }
+                }
+#endif
+                if (is_committed_and_writable) {
                     auto* slot = reinterpret_cast<rex::be<uint32_t>*>(base + s.addr);
                     uint32_t cur = static_cast<uint32_t>(*slot);
-                    if (cur == 0 && (mbi.Protect & writable_mask) != 0) {
+                    if (cur == 0) {
                         *slot = s.fallback;
                         L4D2_LOG_INFO("ModuleLoader", "Patched null allocator fallback slot 0x%08X -> 0x%08X",
                                       s.addr, s.fallback);
                     } else {
-                        L4D2_LOG_INFO("ModuleLoader", "Post-preload slot 0x%08X current=0x%08X (protect=0x%lX)",
-                                      s.addr, cur, static_cast<unsigned long>(mbi.Protect));
+                        L4D2_LOG_INFO("ModuleLoader", "Post-preload slot 0x%08X current=0x%08X",
+                                      s.addr, cur);
                     }
                 }
             }
         }
     }
-#endif
     rex::FlushLogging();
 }
 

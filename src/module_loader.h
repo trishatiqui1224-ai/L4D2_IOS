@@ -28,6 +28,7 @@ void RecordDispatchBreadcrumb(uint32_t target_addr, uint32_t caller_lr);
 void DumpDispatchRingBuffer();
 void sub_82015D78(PPCContext& ctx, uint8_t* base);
 void sub_82011120(PPCContext& ctx, uint8_t* base);
+void sub_832ABB08(PPCContext& ctx, uint8_t* base);
 
 #if defined(_WIN32) && defined(L4D2_USE_REXGLUE)
 __declspec(dllimport) void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);

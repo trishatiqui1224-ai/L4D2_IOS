@@ -443,3 +443,41 @@ patch_function(
 \t// lwz r10,0(r3)
 """,
 )
+
+# CreateInterface in datacache_360 tail-calls the factory for the requested interface.
+# The MDLCache / VModelLoader singleton factory at 0x832ABB08 loads the singleton address.
+patch_function(
+    "sub_832C10A0",
+    """\t// bctr 
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+""",
+    """\t// bctr 
+\tif (ctx.ctr.u32 == 0x832ABB08u) {
+\t\tctx.r11.s64 = -2094071808; // lis r11,0x832F
+\t\tctx.r3.s64 = ctx.r11.s64 - 16012;
+\t} else {
+\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t}
+""",
+    module="datacache",
+)
+
+# Guard sub_86DF36D0 against uninitialized guest subsystem interface.
+# When r3 + 132 or its vtable is null, do not dereference null or jump to 0x0.
+patch_function(
+    "sub_86DF36D0",
+    """\t// lwz r3,132(r3)
+\tctx.r3.u64 = REX_LOAD_U32(ctx.r3.u32 + 132);
+\t// mr r29,r4
+""",
+    """\t// lwz r3,132(r3)
+\tctx.r3.u64 = REX_LOAD_U32(ctx.r3.u32 + 132);
+\tif (ctx.r3.u32 == 0) {
+\t\tctx.r3.s64 = -1;
+\t\tgoto loc_86DF3768;
+\t}
+\t// mr r29,r4
+""",
+    module="engine",
+)
+
