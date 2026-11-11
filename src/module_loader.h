@@ -13,7 +13,13 @@ using PPCFunc = void(PPCContext& ctx, uint8_t* base);
 using RexDumpRingBufferFn = void (*)();
 
 extern "C" {
+#if defined(_WIN32) && defined(L4D2_USE_REXGLUE)
+__declspec(dllimport) extern PPCFunc** g_global_func_table;
+#elif defined(_WIN32)
+extern PPCFunc** g_global_func_table;
+#else
 __attribute__((visibility("default"))) extern PPCFunc** g_global_func_table;
+#endif
 
 PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr);
 void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr);
@@ -23,7 +29,9 @@ void DumpDispatchRingBuffer();
 void sub_82015D78(PPCContext& ctx, uint8_t* base);
 void sub_82011120(PPCContext& ctx, uint8_t* base);
 
-#if defined(__GNUC__) || defined(__clang__)
+#if defined(_WIN32) && defined(L4D2_USE_REXGLUE)
+__declspec(dllimport) void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);
+#elif defined(__GNUC__) || defined(__clang__)
 __attribute__((weak)) void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);
 #else
 void RexRegisterDumpRingBufferCallback(RexDumpRingBufferFn fn);

@@ -23,6 +23,7 @@
 #if defined(_WIN32)
 #include <windows.h>
 #include <dbghelp.h>
+#include <cstdlib>
 #endif
 
 namespace l4d2 {
@@ -34,8 +35,13 @@ static std::string s_boot_path = "boot.txt";
 void CrashHandler::SetBootFilePath(const std::string& path) {
     if (!path.empty()) {
         s_boot_path = path;
+#if defined(_WIN32)
+        _putenv_s("L4D2_BOOT_PATH", path.c_str());
+        _putenv_s("NFSMW_SIGNAL_REPORT", path.c_str());
+#else
         setenv("L4D2_BOOT_PATH", path.c_str(), 1);
         setenv("NFSMW_SIGNAL_REPORT", path.c_str(), 1);
+#endif
     }
 }
 

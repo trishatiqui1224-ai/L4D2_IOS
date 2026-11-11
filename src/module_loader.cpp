@@ -395,10 +395,15 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
     InitializeGlobalFunctionTable();
 
     // Register watchdog ring buffer dump callback with rexruntime if available
+#if defined(_WIN32) && defined(L4D2_USE_REXGLUE)
+    RexRegisterDumpRingBufferCallback(&DumpDispatchRingBuffer);
+#else
     if (RexRegisterDumpRingBufferCallback) {
         RexRegisterDumpRingBufferCallback(&DumpDispatchRingBuffer);
     }
+#endif
 
+#if !defined(_WIN32)
     // 0. Pre-initialize critical cross-DLL variables and default allocator pointers in guest memory
     if (auto* mem = kernel_state->memory()) {
         uint8_t* base = mem->virtual_membase();
@@ -459,6 +464,7 @@ void ModuleLoader::RegisterRecompiledModules(rex::system::KernelState* kernel_st
             L4D2_LOG_INFO("ModuleLoader", "Pre-initialized tier0/vstdlib/engine allocator pointers and cross-DLL variables");
         }
     }
+#endif
 
     // Pre-populate default.xex compiled functions into global table
     if (g_global_func_table && l4d2_default_PPCImageConfig.func_mappings) {
@@ -564,9 +570,7 @@ void ModuleLoader::PreloadSourceModules(rex::system::KernelState* kernel_state) 
     if (!kernel_state) return;
 
     L4D2_LOG_INFO("ModuleLoader", "Pass 1: Pre-loading all Source Engine modules and wiring cross-DLL imports...");
-    for (const auto& desc : kSourceModules) {
-        if (strcmp(desc.module_name, "default") == 0) continue;
-
+    auto preload_one = [&](const ModuleDescriptor& desc) {
         std::string p = desc.relative_path;
         std::replace(p.begin(), p.end(), '/', '\\');
         std::string guest_path = "d:\\" + p;
@@ -580,8 +584,65 @@ void ModuleLoader::PreloadSourceModules(rex::system::KernelState* kernel_state) 
         } else {
             L4D2_LOG_DEBUG("ModuleLoader", "Pass 1: Module '%s' will be loaded on demand", desc.module_name);
         }
+    };
+
+    // Load dependency roots (tier0_360, then vstdlib_360) before dependents such as vphysics_360.
+    for (const char* priority_mod : {"tier0_360", "vstdlib_360"}) {
+        for (const auto& desc : kSourceModules) {
+            if (strcmp(desc.module_name, priority_mod) == 0) {
+                preload_one(desc);
+                break;
+            }
+        }
+    }
+    for (const auto& desc : kSourceModules) {
+        if (strcmp(desc.module_name, "default") == 0 ||
+            strcmp(desc.module_name, "tier0_360") == 0 ||
+            strcmp(desc.module_name, "vstdlib_360") == 0) {
+            continue;
+        }
+        preload_one(desc);
     }
     L4D2_LOG_INFO("ModuleLoader", "Pass 1 complete: All modules pre-mapped and cross-DLL imports wired");
+#if defined(_WIN32)
+    // On Windows, guest memory uses MEM_RESERVE until LoadUserModule commits each module's pages.
+    // Patch fallback allocator pointers only after Pass 1 has mapped them and only if committed & null.
+    if (auto* mem = kernel_state->memory()) {
+        if (uint8_t* base = mem->virtual_membase()) {
+            const struct { uint32_t addr; uint32_t fallback; } kFallbackSlots[] = {
+                {0x82C406CCu, 0x82C406D0u},
+                {0x82C406D0u, 0x82C00BF4u},
+                {0x82C00BF4u, 0x82C16CD0u},
+                {0x82C00BF8u, 0x82C16CD0u},
+                {0x82C42EB0u, 0x82C13FF0u},
+                {0x82E0046Cu, 0x82C406CCu},
+                {0x82E0047Cu, 0x82C64C3Cu},
+                {0x82E00484u, 0x82C446D8u},
+                {0x82E004A4u, 0x82C434ACu},
+                {0x82E306D0u, 0x82C406D0u},
+                {0x871C0000u, 0x82C406D0u},
+            };
+            for (const auto& s : kFallbackSlots) {
+                MEMORY_BASIC_INFORMATION mbi{};
+                if (VirtualQuery(base + s.addr, &mbi, sizeof(mbi)) == sizeof(mbi) &&
+                    mbi.State == MEM_COMMIT) {
+                    const DWORD writable_mask =
+                        PAGE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
+                    auto* slot = reinterpret_cast<rex::be<uint32_t>*>(base + s.addr);
+                    uint32_t cur = static_cast<uint32_t>(*slot);
+                    if (cur == 0 && (mbi.Protect & writable_mask) != 0) {
+                        *slot = s.fallback;
+                        L4D2_LOG_INFO("ModuleLoader", "Patched null allocator fallback slot 0x%08X -> 0x%08X",
+                                      s.addr, s.fallback);
+                    } else {
+                        L4D2_LOG_INFO("ModuleLoader", "Post-preload slot 0x%08X current=0x%08X (protect=0x%lX)",
+                                      s.addr, cur, static_cast<unsigned long>(mbi.Protect));
+                    }
+                }
+            }
+        }
+    }
+#endif
     rex::FlushLogging();
 }
 
