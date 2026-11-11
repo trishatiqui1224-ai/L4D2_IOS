@@ -315,3 +315,45 @@ patch_function(
     "\tctx.lr = 0x86EDDA20;\n\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\nloc_86EDDA20:\n",
     "\tctx.lr = 0x86EDDA20;\n" + "".join(initializer_dispatch) + "loc_86EDDA20:\n",
 )
+
+# VEngineCvar007 is registered by vstdlib's sub_82E2BC10. Its factory,
+# sub_82E101B8, returns the singleton whose constructor installs this vtable.
+# Use that factory if the engine's normal factory chain misses the interface.
+patch_function(
+    "sub_86E34C58",
+    """\tctx.lr = 0x86E34CDC;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t// rotlwi r10,r3,0
+""",
+    """\tctx.lr = 0x86E34CDC;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\tif (ctx.r3.u32 == 0 && REX_LOAD_U32(0x82E31FE8u) == 0x82E00A14u) {
+\t\tREX_CALL_INDIRECT_FUNC(0x82E101B8u);
+\t}
+\t// rotlwi r10,r3,0
+""",
+)
+
+# Launcher teardown can call this even if the cvar interface never connected.
+patch_function(
+    "sub_86BE3568",
+    """\tctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + -16552);
+\t// lwz r9,0(r3)
+""",
+    """\tctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 + -16552);
+\tif (ctx.r3.u32 == 0) goto clear_cvar_registration;
+\t// lwz r9,0(r3)
+""",
+)
+patch_function(
+    "sub_86BE3568",
+    """\tctx.lr = 0x86BE359C;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+\t// li r7,0
+""",
+    """\tctx.lr = 0x86BE359C;
+\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+clear_cvar_registration:
+\t// li r7,0
+""",
+)
