@@ -58,3 +58,4 @@ BLOCKS = [
 
 if __name__ == "__main__":
     sys.exit(run("ios_rtl_null_check", BLOCKS))
+

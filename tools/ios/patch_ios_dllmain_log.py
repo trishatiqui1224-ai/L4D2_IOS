@@ -67,9 +67,10 @@ NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute Dll
   {
     auto global_lock = global_critical_region_.Acquire();
     for (auto& existing_module : user_modules_) {
-      if (existing_module->path() == path || existing_module->path() == resolved_path ||
-          existing_module->Matches(raw_name) || existing_module->Matches(path) ||
-          existing_module->Matches(resolved_path) || existing_module->Matches(base_filename) ||
+      if (existing_module->path() == path ||
+          existing_module->Matches(raw_name) ||
+          existing_module->Matches(path) ||
+          existing_module->Matches(name) ||
           existing_module->name() == name) {
         if (call_entry && existing_module->is_dll_module() && existing_module->entry_point()) {
           if (!s_dllmain_called_entrypoints.count(existing_module->entry_point()) &&
@@ -86,10 +87,10 @@ NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute Dll
       }
     }
     if (!existing_to_call) {
-      auto [it, inserted] = loading_paths_.emplace(resolved_path);
+      auto [it, inserted] = loading_paths_.emplace(path);
       (void)it;
       if (!inserted) {
-        REXSYS_WARN("LoadUserModule: '{}' already being loaded by another thread", resolved_path);
+        REXSYS_WARN("LoadUserModule: '{}' already being loaded by another thread", path);
         return nullptr;
       }
     }
