@@ -58,6 +58,7 @@ IOS_PATCHES = [
     "patch_ios_module_matching",
     "patch_ios_dllmain_log",
     "patch_ios_xex_load",
+    "patch_ios_rtl_null_check",
     "patch_ios_waits",
     "patch_ios_pause",
     "patch_ios_sdl",

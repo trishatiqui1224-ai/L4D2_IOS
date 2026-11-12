@@ -26,10 +26,10 @@ NEW_TOP = '''#include <rex/system/xtimer.h>
 #include <mutex>
 #include <unordered_set>
 
-#if defined(__GNUC__) || defined(__clang__)
-#define REX_CALLBACK_EXPORT __attribute__((visibility("default")))
-#elif defined(_MSC_VER)
+#if defined(_WIN32)
 #define REX_CALLBACK_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+#define REX_CALLBACK_EXPORT __attribute__((visibility("default")))
 #else
 #define REX_CALLBACK_EXPORT
 #endif
@@ -67,8 +67,10 @@ NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute Dll
   {
     auto global_lock = global_critical_region_.Acquire();
     for (auto& existing_module : user_modules_) {
-      if (existing_module->path() == path || existing_module->Matches(raw_name) ||
-          existing_module->Matches(path) || existing_module->name() == name) {
+      if (existing_module->path() == path || existing_module->path() == resolved_path ||
+          existing_module->Matches(raw_name) || existing_module->Matches(path) ||
+          existing_module->Matches(resolved_path) || existing_module->Matches(base_filename) ||
+          existing_module->name() == name) {
         if (call_entry && existing_module->is_dll_module() && existing_module->entry_point()) {
           if (!s_dllmain_called_entrypoints.count(existing_module->entry_point()) &&
               !s_dllmain_called_modules.count(existing_module->path())) {
@@ -84,10 +86,10 @@ NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute Dll
       }
     }
     if (!existing_to_call) {
-      auto [it, inserted] = loading_paths_.emplace(path);
+      auto [it, inserted] = loading_paths_.emplace(resolved_path);
       (void)it;
       if (!inserted) {
-        REXSYS_WARN("LoadUserModule: '{}' already being loaded by another thread", path);
+        REXSYS_WARN("LoadUserModule: '{}' already being loaded by another thread", resolved_path);
         return nullptr;
       }
     }

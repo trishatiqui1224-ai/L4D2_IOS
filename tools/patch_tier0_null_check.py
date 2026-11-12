@@ -22,8 +22,9 @@ PATCHED = """\t// bl 0x82c24710
 \tctx.lr = 0x82C34E08;
 \t__savegprlr_22(ctx, base);
 \tif (__builtin_expect(ctx.r3.u32 == 0, 0)) {
-\t\tREXLOG_WARN("[tier0] sub_82C34E00 got r3=0 at LR=0x82C34E08; using scratch buffer");
-\t\tctx.r3.u32 = 0x3005D000; // Valid zeroed guest address near TLS arena (0x3005E000)
+\t\tREXLOG_WARN("[tier0] sub_82C34E00 got r3=0 at LR=0x82C34E08; returning NULL");
+\t\tctx.r3.u64 = 0;
+\t\treturn;
 \t}"""
 
 def check_status() -> int:
@@ -32,7 +33,7 @@ def check_status() -> int:
         return 1
 
     content = TIER0_RECOMP.read_text(encoding="utf-8")
-    if "ctx.r3.u32 = 0x3005D000" in content:
+    if "ctx.r3.u64 = 0;\n\t\treturn;" in content:
         print("[tier0_null_check] Fallback NULL check in sub_82C34E00: APPLIED (OK)")
         return 0
     elif ANCHOR in content:
@@ -48,8 +49,24 @@ def apply_patch() -> int:
         return 1
 
     content = TIER0_RECOMP.read_text(encoding="utf-8")
-    if "ctx.r3.u32 = 0x3005D000" in content:
+    if "ctx.r3.u64 = 0;\n\t\treturn;" in content:
         print("[tier0_null_check] Patch already applied.")
+        return 0
+
+    if "ctx.r3.u32 = 0x3005D000;" in content:
+        # Replace old scratch buffer patch with clean NULL return
+        old_patch = """\tif (__builtin_expect(ctx.r3.u32 == 0, 0)) {
+\t\tREXLOG_WARN("[tier0] sub_82C34E00 got r3=0 at LR=0x82C34E08; using scratch buffer");
+\t\tctx.r3.u32 = 0x3005D000; // Valid zeroed guest address near TLS arena (0x3005E000)
+\t}"""
+        new_patch = """\tif (__builtin_expect(ctx.r3.u32 == 0, 0)) {
+\t\tREXLOG_WARN("[tier0] sub_82C34E00 got r3=0 at LR=0x82C34E08; returning NULL");
+\t\tctx.r3.u64 = 0;
+\t\treturn;
+\t}"""
+        new_content = content.replace(old_patch, new_patch, 1)
+        TIER0_RECOMP.write_text(new_content, encoding="utf-8", newline="\n")
+        print("[tier0_null_check] Successfully updated NULL check in sub_82C34E00 to return NULL.")
         return 0
 
     if ANCHOR not in content:

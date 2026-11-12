@@ -60,34 +60,30 @@ PATCHED = '''u32 XexLoadImage_entry(mapped_string module_name, u32 module_flags,
   X_STATUS result = X_STATUS_NO_SUCH_FILE;
 
   uint32_t hmodule = 0;
-  {
-    // LOCAL PATCH - iOS: Check if module is already loaded first before any LoadUserModule call!
-    // Prevents re-loading or re-executing DllMain for preloaded or active modules (e.g. engine_360).
+  // LOCAL PATCH - iOS: Always invoke LoadUserModule with call_entry=true on active guest thread
+  // so that preloaded modules execute their deferred DllMain on this thread.
+  // s_dllmain_called_entrypoints in LoadUserModule prevents re-executing DllMain for already-attached modules.
+  auto user_module = REX_KERNEL_STATE()->LoadUserModule(module_name.value(), /*call_entry=*/true);
+  if (!user_module) {
+    auto lock = rex::thread::global_critical_region::AcquireDirect();
+    auto existing = REX_KERNEL_STATE()->GetModule(module_name.value());
+    if (existing) {
+      user_module = REX_KERNEL_STATE()->LoadUserModule(existing->path(), /*call_entry=*/true);
+    }
+  }
+
+  if (user_module) {
+    auto user_module_raw = user_module.release();
+    hmodule = user_module_raw->hmodule_ptr();
+    auto lock = rex::thread::global_critical_region::AcquireDirect();
+    auto ldr_data = REX_KERNEL_MEMORY()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule);
+    ldr_data->load_count++;
+    result = X_STATUS_SUCCESS;
+  } else {
     auto lock = rex::thread::global_critical_region::AcquireDirect();
     auto module = REX_KERNEL_STATE()->GetModule(module_name.value());
     if (module) {
       hmodule = module->hmodule_ptr();
-      auto ldr_data = REX_KERNEL_MEMORY()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule);
-      ldr_data->load_count++;
-      result = X_STATUS_SUCCESS;
-    }
-  }
-
-  if (!hmodule) {
-    // Module not loaded yet: invoke LoadUserModule with call_entry=true on active guest thread
-    auto user_module = REX_KERNEL_STATE()->LoadUserModule(module_name.value(), /*call_entry=*/true);
-    if (!user_module) {
-      auto lock = rex::thread::global_critical_region::AcquireDirect();
-      auto existing = REX_KERNEL_STATE()->GetModule(module_name.value());
-      if (existing) {
-        user_module = REX_KERNEL_STATE()->LoadUserModule(existing->path(), /*call_entry=*/true);
-      }
-    }
-
-    if (user_module) {
-      auto user_module_raw = user_module.release();
-      hmodule = user_module_raw->hmodule_ptr();
-      auto lock = rex::thread::global_critical_region::AcquireDirect();
       auto ldr_data = REX_KERNEL_MEMORY()->TranslateVirtual<X_LDR_DATA_TABLE_ENTRY*>(hmodule);
       ldr_data->load_count++;
       result = X_STATUS_SUCCESS;
