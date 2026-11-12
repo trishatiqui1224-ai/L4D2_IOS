@@ -61,6 +61,17 @@ extern "C" PPCFunc* LookupGlobalFunction(uint8_t* base, uint32_t guest_addr) {
 }
 
 extern "C" void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_lr, uint32_t r3) {
+    static std::unordered_set<uint64_t> s_logged_calls;
+    static std::mutex s_log_mutex;
+    uint64_t key = (static_cast<uint64_t>(target_addr) << 32) | caller_lr;
+    {
+        std::lock_guard<std::mutex> lock(s_log_mutex);
+        if (s_logged_calls.size() > 1024) s_logged_calls.clear();
+        if (!s_logged_calls.insert(key).second) {
+            return;
+        }
+    }
+
     std::string mod_target = l4d2::ModuleLoader::Instance().SymbolicateAddress(target_addr);
     std::string mod_caller = l4d2::ModuleLoader::Instance().SymbolicateAddress(caller_lr);
 
@@ -79,9 +90,6 @@ extern "C" void LogUnresolvedIndirectCall(uint32_t target_addr, uint32_t caller_
     if (bf) {
         fprintf(bf, "%s\n", buf);
         fflush(bf);
-#if !defined(_WIN32)
-        fsync(fileno(bf));
-#endif
         fclose(bf);
     }
     l4d2::log::Logger::Instance().Flush();
@@ -159,18 +167,30 @@ extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t ta
         return;
     }
 
-    thread_local uint32_t tls_dispatching_target = 0;
-    if (__builtin_expect(tls_dispatching_target == target_addr, 0)) {
+    // Allow legitimate recursion while guarding against infinite loops
+    thread_local uint32_t tls_dispatch_depth = 0;
+    if (__builtin_expect(tls_dispatch_depth >= 128, 0)) {
         LogUnresolvedIndirectCall(target_addr, caller_lr, ctx.r3.u32);
         ctx.r3.u64 = 0;
         return;
     }
 
-    struct ScopedDispatchTarget {
-        uint32_t prev;
-        ScopedDispatchTarget(uint32_t t) : prev(tls_dispatching_target) { tls_dispatching_target = t; }
-        ~ScopedDispatchTarget() { tls_dispatching_target = prev; }
-    } guard(target_addr);
+    thread_local uint32_t tls_target_stack[128];
+    uint32_t same_target_count = 0;
+    for (uint32_t i = 0; i < tls_dispatch_depth; ++i) {
+        if (tls_target_stack[i] == target_addr) {
+            if (++same_target_count >= 32) {
+                LogUnresolvedIndirectCall(target_addr, caller_lr, ctx.r3.u32);
+                ctx.r3.u64 = 0;
+                return;
+            }
+        }
+    }
+
+    tls_target_stack[tls_dispatch_depth++] = target_addr;
+    struct ScopedDepthGuard {
+        ~ScopedDepthGuard() { --tls_dispatch_depth; }
+    } depth_guard;
 
     // Safety translation: If a rebased module calls an unrelocated address in 0x82010000..0x8203FFFF
     if (caller_lr >= 0x82C00000 && target_addr >= 0x82010000 && target_addr < 0x82040000) {
@@ -208,6 +228,123 @@ extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t ta
                 g_global_func_table[(target_addr - kGlobalFuncTableBase) >> 2] = fn;
             }
             fn(ctx, base);
+            return;
+        }
+    }
+
+    // Dynamic PowerPC Leaf Thunk Execution for uncompiled interface/virtual wrappers
+    if (base && (target_addr & 3) == 0 && target_addr >= 0x82000000 && target_addr < 0x90000000) {
+        const uint32_t* p = reinterpret_cast<const uint32_t*>(base + target_addr);
+        uint32_t i0 = __builtin_bswap32(p[0]);
+        uint32_t i1 = __builtin_bswap32(p[1]);
+        uint32_t i2 = __builtin_bswap32(p[2]);
+        uint32_t i3 = __builtin_bswap32(p[3]);
+
+        // Pattern 1: 4-instruction Virtual Call Thunk (C++ interface dispatch)
+        // lwz r12, 0(r3)      (0x81830000)
+        // lwz r11, offset(r12)(0x816Cxxxx)
+        // mtctr r11           (0x7D6903A6)
+        // bctr                (0x4E800420)
+        if (i0 == 0x81830000u && (i1 & 0xFFFF0000u) == 0x816C0000u &&
+            i2 == 0x7D6903A6u && i3 == 0x4E800420u) {
+            uint32_t this_ptr = ctx.r3.u32;
+            if (this_ptr != 0) {
+                uint32_t vtable = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + this_ptr));
+                int16_t offset = static_cast<int16_t>(i1 & 0xFFFFu);
+                uint32_t method = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + vtable + offset));
+                ctx.r12.u64 = vtable;
+                ctx.r11.u64 = method;
+                ctx.ctr.u64 = method;
+                SafeDispatchIndirect(ctx, base, method, caller_lr);
+                return;
+            }
+        }
+
+        // Pattern 2: Import Trampoline (lis r11, HIGH; ori r11, r11, LOW)
+        if ((i0 & 0xFFFF0000u) == 0x3D600000u && (i1 & 0xFFFF0000u) == 0x616B0000u) {
+            uint32_t target_guest = ((i0 & 0xFFFFu) << 16) | (i1 & 0xFFFFu);
+            if (target_guest != target_addr) {
+                ctx.r11.u64 = target_guest;
+                ctx.ctr.u64 = target_guest;
+                SafeDispatchIndirect(ctx, base, target_guest, caller_lr);
+                return;
+            }
+        }
+
+        // Pattern 3: Simple leaf returning constant (e.g. li r3, N; blr)
+        if ((i0 & 0xFFFF0000u) == 0x38600000u && i1 == 0x4E800020u) {
+            ctx.r3.s64 = static_cast<int16_t>(i0 & 0xFFFFu);
+            return;
+        }
+
+        // Pattern 4: Immediate blr (no-op stub)
+        if (i0 == 0x4E800020u) {
+            return;
+        }
+
+        // Pattern 5: 8-instruction Engine vtable thunk (e.g. sub_86DAB220)
+        uint32_t i4 = __builtin_bswap32(p[4]);
+        uint32_t i5 = __builtin_bswap32(p[5]);
+        uint32_t i6 = __builtin_bswap32(p[6]);
+        uint32_t i7 = __builtin_bswap32(p[7]);
+        if ((i0 & 0xFFFF0000u) == 0x3D600000u && i1 == 0x88A40000u &&
+            i2 == 0x80840004u && (i3 & 0xFFFF0000u) == 0x806B0000u &&
+            i4 == 0x81430000u && (i5 & 0xFFFF0000u) == 0x812A0000u &&
+            i6 == 0x7D2903A6u && i7 == 0x4E800420u) {
+            uint32_t r11_val = (i0 & 0xFFFFu) << 16;
+            ctx.r5.u64 = *reinterpret_cast<const uint8_t*>(base + ctx.r4.u32);
+            ctx.r4.u64 = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + ctx.r4.u32 + 4));
+            int16_t r3_off = static_cast<int16_t>(i3 & 0xFFFFu);
+            uint32_t r3_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + r11_val + r3_off));
+            ctx.r3.u64 = r3_val;
+            uint32_t r10_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + r3_val));
+            ctx.r10.u64 = r10_val;
+            int16_t r9_off = static_cast<int16_t>(i5 & 0xFFFFu);
+            uint32_t method = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + r10_val + r9_off));
+            ctx.r9.u64 = method;
+            ctx.ctr.u64 = method;
+            SafeDispatchIndirect(ctx, base, method, caller_lr);
+            return;
+        }
+
+        // Pattern 6: vgui::Panel::HasParent hierarchy walk (e.g. 0x83C253B0 in vgui2_360)
+        // cmpw cr6, r3, r4 (0x7F032040)
+        // bne cr6, +12      (0x409A000C)
+        // li r3, 1          (0x38600001)
+        // blr               (0x4E800020)
+        if (i0 == 0x7F032040u && i1 == 0x409A000Cu && i2 == 0x38600001u && i3 == 0x4E800020u) {
+            uint32_t child = ctx.r3.u32;
+            uint32_t target_parent = ctx.r4.u32;
+            while (child >= 0x00010000u) {
+                if (child == target_parent) {
+                    ctx.r3.u64 = 1;
+                    return;
+                }
+                child = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + child + 0x14));
+            }
+            ctx.r3.u64 = 0;
+            return;
+        }
+
+        // Pattern 7: CUtlRBTree / CDefOps::Less branchless unsigned comparator (e.g. 0x82E10668 in vstdlib_360)
+        // lwz r11, 0(r3)           (0x81630000)
+        // lwz r10, 0(r4)           (0x81440000)
+        // subfc r9, r10, r11       (0x7D2A5810)
+        // subfe r7, r8, r8         (0x7CE84110)
+        // rlwinm r3, r7, 0, 31, 31 (0x54E307FE)
+        // blr                      (0x4E800020)
+        if (i0 == 0x81630000u && i1 == 0x81440000u && i2 == 0x7D2A5810u &&
+            i3 == 0x7CE84110u && __builtin_bswap32(p[4]) == 0x54E307FEu &&
+            __builtin_bswap32(p[5]) == 0x4E800020u) {
+            uint32_t a_ptr = ctx.r3.u32;
+            uint32_t b_ptr = ctx.r4.u32;
+            if (a_ptr >= 0x00010000u && b_ptr >= 0x00010000u) {
+                uint32_t a_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + a_ptr));
+                uint32_t b_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + b_ptr));
+                ctx.r3.u64 = (a_val < b_val) ? 1 : 0;
+            } else {
+                ctx.r3.u64 = 0;
+            }
             return;
         }
     }

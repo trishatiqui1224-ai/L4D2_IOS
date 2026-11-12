@@ -76,6 +76,7 @@ static bool s_gamepad_connected = false;
 - (instancetype)initWithFrame:(CGRect)frame config:(const l4d2::touch::TouchConfig&)config {
     if (self = [super initWithFrame:frame]) {
         _config = config;
+        _navigationMode = YES; // Start in Menu Navigation mode so user can navigate the title/menu
         self.multipleTouchEnabled = YES;
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.backgroundColor = [UIColor clearColor];
@@ -268,6 +269,7 @@ static bool s_gamepad_connected = false;
     const CGFloat bottom = CGRectGetMaxY(UIEdgeInsetsInsetRect(self.bounds, _layoutInsets)) - 18.0;
     const CGFloat faceGap = 8.0;
     for (NSArray* item in @[
+        @[@"START", @(right - faceD * 3.0 - faceGap * 2.0), @(bottom - faceD)],
         @[@"A", @(right - faceD * 2.0 - faceGap), @(bottom - faceD)],
         @[@"B", @(right - faceD), @(bottom - faceD)],
     ]) {
@@ -454,6 +456,7 @@ static bool s_gamepad_connected = false;
         @"LIGHT": @(SDL_GAMEPAD_BUTTON_DPAD_UP), @"THROW": @(SDL_GAMEPAD_BUTTON_DPAD_LEFT),
         @"KIT": @(SDL_GAMEPAD_BUTTON_DPAD_DOWN), @"PILLS": @(SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
         @"PAUSE": @(SDL_GAMEPAD_BUTTON_START), @"MENU": @(SDL_GAMEPAD_BUTTON_START),
+        @"START": @(SDL_GAMEPAD_BUTTON_START),
         @"BACK": @(SDL_GAMEPAD_BUTTON_BACK),
         @"↑": @(SDL_GAMEPAD_BUTTON_DPAD_UP), @"↓": @(SDL_GAMEPAD_BUTTON_DPAD_DOWN),
         @"←": @(SDL_GAMEPAD_BUTTON_DPAD_LEFT), @"→": @(SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
