@@ -55,6 +55,7 @@ IOS_PATCHES = [
     "patch_ios_memory",
     "patch_ios_function_table",
     "patch_ios_import_resolution",
+    "patch_ios_module_matching",
     "patch_ios_dllmain_log",
     "patch_ios_xex_load",
     "patch_ios_waits",

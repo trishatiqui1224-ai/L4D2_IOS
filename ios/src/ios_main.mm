@@ -119,6 +119,7 @@ static std::vector<std::string> GameArguments(const fs::path& docs, const fs::pa
         "l4d2recomp",
         "--title_id=454108D4",
         "--l4d2_title_id=454108D4",
+        "--cl=-novid",
         "--gpu_plugin=xenos",
         "--gpu_backend=vulkan",
         "--render_target_path_vulkan=fbo",

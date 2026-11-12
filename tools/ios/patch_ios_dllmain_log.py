@@ -43,6 +43,7 @@ extern "C" REX_CALLBACK_EXPORT void RexRegisterDumpRingBufferCallback(RexDumpRin
 
 namespace rex::system {
 static std::unordered_set<std::string> s_dllmain_called_modules;
+static std::unordered_set<uint32_t> s_dllmain_called_entrypoints;
 '''
 
 ANCHOR_PRELOAD = '''  {
@@ -69,7 +70,9 @@ NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute Dll
       if (existing_module->path() == path || existing_module->Matches(raw_name) ||
           existing_module->Matches(path) || existing_module->name() == name) {
         if (call_entry && existing_module->is_dll_module() && existing_module->entry_point()) {
-          if (!s_dllmain_called_modules.count(existing_module->path())) {
+          if (!s_dllmain_called_entrypoints.count(existing_module->entry_point()) &&
+              !s_dllmain_called_modules.count(existing_module->path())) {
+            s_dllmain_called_entrypoints.insert(existing_module->entry_point());
             s_dllmain_called_modules.insert(existing_module->path());
             existing_to_call = existing_module;
           }
@@ -147,6 +150,7 @@ NEW_PRELOAD = '''  // LOCAL PATCH - iOS: track executed DllMains and execute Dll
       REXSYS_WARN("DllMain(DLL_PROCESS_ATTACH) deferred for '{}': not on a guest thread", existing_to_call->name());
       auto lock = global_critical_region_.Acquire();
       s_dllmain_called_modules.erase(existing_to_call->path());
+      s_dllmain_called_entrypoints.erase(existing_to_call->entry_point());
     }
     return existing_to_call;
   }
@@ -162,6 +166,7 @@ ANCHOR_EXEC = '''      auto* thread = XThread::GetCurrentThread();
 NEW_EXEC = '''      auto* thread = XThread::GetCurrentThread();
       uint64_t args[] = {module->hmodule_ptr(), 1 /* DLL_PROCESS_ATTACH */, 0};
       s_dllmain_called_modules.insert(module->path());
+      s_dllmain_called_entrypoints.insert(module->entry_point());
       REXSYS_INFO("Calling DllMain(0x{:08X}) for {}...", module->entry_point(), module->name());
       fflush(stdout);
       fflush(stderr);
