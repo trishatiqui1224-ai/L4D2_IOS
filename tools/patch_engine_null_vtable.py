@@ -33,9 +33,9 @@ def patch_function(name: str, anchor: str, replacement: str, *, module: str = "e
     raise SystemExit(f"Engine null-vtable patch: function {name} was not generated")
 
 
-# This panel callback takes the array element in r4 as its receiver. A missing
-# backing array makes the first element address zero and later ones offsets
-# from zero. Skip this traversal until the backing array exists.
+# All callbacks in this traversal take a record address in r4. A missing
+# backing array would pass zero for the first record and offsets from zero
+# for subsequent records, regardless of the callback address.
 patch_function(
     "sub_86DAC498",
     """loc_86DAC4D0:
@@ -46,7 +46,7 @@ patch_function(
     """loc_86DAC4D0:
 \t// lwz r11,0(r30)
 \tctx.r11.u64 = REX_LOAD_U32(ctx.r30.u32 + 0);
-\tif (ctx.r27.u32 == 0x83C26210u && ctx.r11.u32 == 0) goto loc_86DAC4F8;
+\tif (ctx.r11.u32 == 0) goto loc_86DAC4F8;
 \t// mr r3,r28
 """,
 )
@@ -404,6 +404,23 @@ def restore_indirect_target(name, return_address, target, body, *, module="engin
         + body + "\t} else {\n\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);\n\t}\n",
         module=module,
     )
+
+
+# The second callback in sub_86DAC500 has no generated entry point. The
+# original PPC at 0x86DAB220 forwards the record's byte flag and handle to
+# slot 56 of the same interface used by the adjacent compiled callback.
+restore_indirect_target(
+    "sub_86DAC498", "86DAC4E4", "86DAB220",
+    """\t\tctx.r11.s64 = -2028208128; // lis r11,0x871C
+\t\tctx.r5.u64 = REX_LOAD_U8(ctx.r4.u32);
+\t\tctx.r4.u64 = REX_LOAD_U32(ctx.r4.u32 + 4);
+\t\tctx.r3.u64 = REX_LOAD_U32(ctx.r11.u32 - 11288);
+\t\tctx.r10.u64 = REX_LOAD_U32(ctx.r3.u32);
+\t\tctx.r9.u64 = REX_LOAD_U32(ctx.r10.u32 + 56);
+\t\tctx.ctr.u64 = ctx.r9.u64;
+\t\tREX_CALL_INDIRECT_FUNC(ctx.ctr.u32);
+""",
+)
 
 
 # This shader API leaf reads one state bit and forwards it through vtable
