@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <atomic>
+#include <bit>
+#include <cmath>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
@@ -158,6 +160,709 @@ __attribute__((visibility("default"))) void DumpDispatchRingBuffer() {
 }
 }
 
+static inline PPCRegister& GetGPR(PPCContext& ctx, uint32_t r) {
+    switch (r & 31) {
+        case 0: return ctx.r0;  case 1: return ctx.r1;  case 2: return ctx.r2;  case 3: return ctx.r3;
+        case 4: return ctx.r4;  case 5: return ctx.r5;  case 6: return ctx.r6;  case 7: return ctx.r7;
+        case 8: return ctx.r8;  case 9: return ctx.r9;  case 10: return ctx.r10; case 11: return ctx.r11;
+        case 12: return ctx.r12; case 13: return ctx.r13; case 14: return ctx.r14; case 15: return ctx.r15;
+        case 16: return ctx.r16; case 17: return ctx.r17; case 18: return ctx.r18; case 19: return ctx.r19;
+        case 20: return ctx.r20; case 21: return ctx.r21; case 22: return ctx.r22; case 23: return ctx.r23;
+        case 24: return ctx.r24; case 25: return ctx.r25; case 26: return ctx.r26; case 27: return ctx.r27;
+        case 28: return ctx.r28; case 29: return ctx.r29; case 30: return ctx.r30; default: return ctx.r31;
+    }
+}
+
+static inline PPCCRRegister& GetCRField(PPCContext& ctx, uint32_t crf) {
+    switch (crf & 7) {
+        case 0: return ctx.cr0; case 1: return ctx.cr1; case 2: return ctx.cr2; case 3: return ctx.cr3;
+        case 4: return ctx.cr4; case 5: return ctx.cr5; case 6: return ctx.cr6; default: return ctx.cr7;
+    }
+}
+
+static inline PPCRegister& GetFPR(PPCContext& ctx, uint32_t f) {
+    switch (f & 31) {
+        case 0: return ctx.f0;  case 1: return ctx.f1;  case 2: return ctx.f2;  case 3: return ctx.f3;
+        case 4: return ctx.f4;  case 5: return ctx.f5;  case 6: return ctx.f6;  case 7: return ctx.f7;
+        case 8: return ctx.f8;  case 9: return ctx.f9;  case 10: return ctx.f10; case 11: return ctx.f11;
+        case 12: return ctx.f12; case 13: return ctx.f13; case 14: return ctx.f14; case 15: return ctx.f15;
+        case 16: return ctx.f16; case 17: return ctx.f17; case 18: return ctx.f18; case 19: return ctx.f19;
+        case 20: return ctx.f20; case 21: return ctx.f21; case 22: return ctx.f22; case 23: return ctx.f23;
+        case 24: return ctx.f24; case 25: return ctx.f25; case 26: return ctx.f26; case 27: return ctx.f27;
+        case 28: return ctx.f28; case 29: return ctx.f29; case 30: return ctx.f30; default: return ctx.f31;
+    }
+}
+
+static inline uint32_t PPC_Mask(uint32_t mb, uint32_t me) {
+    uint32_t mask_mb = (mb <= 31) ? (~0u >> mb) : 0u;
+    uint32_t mask_me = (me <= 31) ? (~0u << (31 - me)) : 0u;
+    return (mb <= me) ? (mask_mb & mask_me) : (mask_mb | mask_me);
+}
+
+static inline void UpdateCR0(PPCContext& ctx, uint32_t result) {
+    ctx.cr0.lt = (static_cast<int32_t>(result) < 0) ? 1 : 0;
+    ctx.cr0.gt = (static_cast<int32_t>(result) > 0) ? 1 : 0;
+    ctx.cr0.eq = (result == 0) ? 1 : 0;
+    ctx.cr0.so = ctx.xer.so;
+}
+
+static inline bool CheckCRBit(PPCContext& ctx, uint32_t bi) {
+    const PPCCRRegister& cr = GetCRField(ctx, bi >> 2);
+    switch (bi & 3) {
+        case 0: return cr.lt != 0;
+        case 1: return cr.gt != 0;
+        case 2: return cr.eq != 0;
+        default: return cr.so != 0;
+    }
+}
+
+static inline bool IsValidGuestPtr(uint32_t ea) {
+    return ea >= 0x00010000u && ea < 0x90000000u;
+}
+
+static inline uint32_t ReadGuestU32(uint8_t* base, uint32_t ea) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        return __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + ea));
+    }
+    return 0;
+}
+
+static inline uint16_t ReadGuestU16(uint8_t* base, uint32_t ea) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        return __builtin_bswap16(*reinterpret_cast<const uint16_t*>(base + ea));
+    }
+    return 0;
+}
+
+static inline uint8_t ReadGuestU8(uint8_t* base, uint32_t ea) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        return *reinterpret_cast<const uint8_t*>(base + ea);
+    }
+    return 0;
+}
+
+static inline uint64_t ReadGuestU64(uint8_t* base, uint32_t ea) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        return __builtin_bswap64(*reinterpret_cast<const uint64_t*>(base + ea));
+    }
+    return 0;
+}
+
+static inline void WriteGuestU32(uint8_t* base, uint32_t ea, uint32_t val) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        *reinterpret_cast<uint32_t*>(base + ea) = __builtin_bswap32(val);
+    }
+}
+
+static inline void WriteGuestU16(uint8_t* base, uint32_t ea, uint16_t val) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        *reinterpret_cast<uint16_t*>(base + ea) = __builtin_bswap16(val);
+    }
+}
+
+static inline void WriteGuestU8(uint8_t* base, uint32_t ea, uint8_t val) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        *reinterpret_cast<uint8_t*>(base + ea) = val;
+    }
+}
+
+static inline void WriteGuestU64(uint8_t* base, uint32_t ea, uint64_t val) {
+    if (__builtin_expect(IsValidGuestPtr(ea), 1)) {
+        *reinterpret_cast<uint64_t*>(base + ea) = __builtin_bswap64(val);
+    }
+}
+
+extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr);
+
+static bool ExecutePPCLeaf(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr) {
+    if (!base || (target_addr & 3) != 0 || target_addr < 0x82000000 || target_addr >= 0x90000000) {
+        return false;
+    }
+
+    uint32_t pc = target_addr;
+    constexpr uint32_t kMaxInstructions = 256;
+
+    for (uint32_t step = 0; step < kMaxInstructions; ++step) {
+        if ((pc & 3) != 0 || pc < 0x82000000 || pc >= 0x90000000) {
+            return false;
+        }
+
+        uint32_t instr = ReadGuestU32(base, pc);
+        uint32_t op = instr >> 26;
+        uint32_t d = (instr >> 21) & 0x1F;
+        uint32_t a = (instr >> 16) & 0x1F;
+        uint32_t b = (instr >> 11) & 0x1F;
+        uint32_t s = d;
+        int16_t simm = static_cast<int16_t>(instr & 0xFFFFu);
+        uint16_t uimm = static_cast<uint16_t>(instr & 0xFFFFu);
+
+        // Quick path: blr (0x4E800020)
+        if (instr == 0x4E800020u) {
+            return true;
+        }
+        // Quick path: bctr (0x4E800420)
+        if (instr == 0x4E800420u) {
+            SafeDispatchIndirect(ctx, base, ctx.ctr.u32, caller_lr);
+            return true;
+        }
+
+        switch (op) {
+            case 14: { // addi rD, rA, SIMM
+                int64_t a_val = (a == 0) ? 0 : GetGPR(ctx, a).s64;
+                GetGPR(ctx, d).s64 = a_val + simm;
+                pc += 4;
+                break;
+            }
+            case 15: { // addis rD, rA, SIMM
+                int64_t a_val = (a == 0) ? 0 : GetGPR(ctx, a).s64;
+                GetGPR(ctx, d).s64 = a_val + (static_cast<int32_t>(simm) << 16);
+                pc += 4;
+                break;
+            }
+            case 7: { // mulli rD, rA, SIMM
+                GetGPR(ctx, d).s64 = GetGPR(ctx, a).s64 * simm;
+                pc += 4;
+                break;
+            }
+            case 10: { // cmpli crfD, L, rA, UIMM
+                uint32_t crf = (instr >> 23) & 7;
+                uint32_t l = (instr >> 21) & 1;
+                uint64_t a_val = l ? GetGPR(ctx, a).u64 : GetGPR(ctx, a).u32;
+                GetCRField(ctx, crf).compare(a_val, static_cast<uint64_t>(uimm), ctx.xer);
+                pc += 4;
+                break;
+            }
+            case 11: { // cmpi crfD, L, rA, SIMM
+                uint32_t crf = (instr >> 23) & 7;
+                uint32_t l = (instr >> 21) & 1;
+                int64_t a_val = l ? GetGPR(ctx, a).s64 : GetGPR(ctx, a).s32;
+                GetCRField(ctx, crf).compare(a_val, static_cast<int64_t>(simm), ctx.xer);
+                pc += 4;
+                break;
+            }
+            case 12: { // addic rD, rA, SIMM
+                uint64_t a_val = GetGPR(ctx, a).u32;
+                uint64_t sum = a_val + static_cast<int32_t>(simm);
+                ctx.xer.ca = (sum >> 32) & 1;
+                GetGPR(ctx, d).s64 = static_cast<int32_t>(sum);
+                pc += 4;
+                break;
+            }
+            case 16: { // bc BO, BI, BD
+                uint32_t bo = (instr >> 21) & 0x1F;
+                uint32_t bi = (instr >> 16) & 0x1F;
+                int16_t bd = static_cast<int16_t>(instr & 0xFFFCu);
+                uint32_t target = (instr & 2) ? static_cast<uint32_t>(bd) : (pc + bd);
+
+                bool ctr_ok = (bo & 0x04) != 0;
+                if (!ctr_ok) {
+                    ctx.ctr.u64--;
+                    ctr_ok = (ctx.ctr.u32 != 0) == ((bo & 0x02) == 0);
+                }
+                bool cond_ok = (bo & 0x10) != 0;
+                if (!cond_ok) {
+                    cond_ok = CheckCRBit(ctx, bi) == ((bo & 0x08) != 0);
+                }
+                if (ctr_ok && cond_ok) {
+                    pc = target;
+                } else {
+                    pc += 4;
+                }
+                break;
+            }
+            case 18: { // b / ba / bl / bla
+                int32_t li = static_cast<int32_t>((instr & 0x03FFFFFCu) << 6) >> 6;
+                uint32_t target = (instr & 2) ? static_cast<uint32_t>(li) : (pc + li);
+                if (instr & 1) { // bl
+                    ctx.lr = pc + 4;
+                    SafeDispatchIndirect(ctx, base, target, static_cast<uint32_t>(ctx.lr));
+                    return true;
+                }
+                // Unconditional branch
+                int32_t diff = static_cast<int32_t>(target - target_addr);
+                if (diff >= -4096 && diff <= 4096) {
+                    pc = target;
+                } else {
+                    SafeDispatchIndirect(ctx, base, target, caller_lr);
+                    return true;
+                }
+                break;
+            }
+            case 19: { // Condition register / return instructions
+                uint32_t xo = (instr >> 1) & 0x3FFu;
+                uint32_t bo = (instr >> 21) & 0x1F;
+                uint32_t bi = (instr >> 16) & 0x1F;
+                if (xo == 16) { // bclr / blr
+                    bool ctr_ok = (bo & 0x04) != 0;
+                    if (!ctr_ok) {
+                        ctx.ctr.u64--;
+                        ctr_ok = (ctx.ctr.u32 != 0) == ((bo & 0x02) == 0);
+                    }
+                    bool cond_ok = (bo & 0x10) != 0;
+                    if (!cond_ok) {
+                        cond_ok = CheckCRBit(ctx, bi) == ((bo & 0x08) != 0);
+                    }
+                    if (ctr_ok && cond_ok) {
+                        return true;
+                    }
+                    pc += 4;
+                    break;
+                } else if (xo == 528) { // bcctr / bctr
+                    bool cond_ok = (bo & 0x10) != 0;
+                    if (!cond_ok) {
+                        cond_ok = CheckCRBit(ctx, bi) == ((bo & 0x08) != 0);
+                    }
+                    if (cond_ok) {
+                        SafeDispatchIndirect(ctx, base, ctx.ctr.u32, caller_lr);
+                        return true;
+                    }
+                    pc += 4;
+                    break;
+                } else {
+                    return false;
+                }
+            }
+            case 20: { // rlwimi rA, rS, SH, MB, ME
+                uint32_t sh = (instr >> 11) & 0x1F;
+                uint32_t mb = (instr >> 6) & 0x1F;
+                uint32_t me = (instr >> 1) & 0x1F;
+                uint32_t mask = PPC_Mask(mb, me);
+                uint32_t rotated = std::rotl(GetGPR(ctx, s).u32, sh);
+                uint32_t res = (rotated & mask) | (GetGPR(ctx, a).u32 & ~mask);
+                GetGPR(ctx, a).u64 = res;
+                if (instr & 1) UpdateCR0(ctx, res);
+                pc += 4;
+                break;
+            }
+            case 21: { // rlwinm rA, rS, SH, MB, ME
+                uint32_t sh = (instr >> 11) & 0x1F;
+                uint32_t mb = (instr >> 6) & 0x1F;
+                uint32_t me = (instr >> 1) & 0x1F;
+                uint32_t mask = PPC_Mask(mb, me);
+                uint32_t rotated = std::rotl(GetGPR(ctx, s).u32, sh);
+                uint32_t res = rotated & mask;
+                GetGPR(ctx, a).u64 = res;
+                if (instr & 1) UpdateCR0(ctx, res);
+                pc += 4;
+                break;
+            }
+            case 24: { // ori rA, rS, UIMM (includes nop: ori 0, 0, 0)
+                GetGPR(ctx, a).u64 = GetGPR(ctx, s).u64 | uimm;
+                pc += 4;
+                break;
+            }
+            case 25: { // oris rA, rS, UIMM
+                GetGPR(ctx, a).u64 = GetGPR(ctx, s).u64 | (static_cast<uint64_t>(uimm) << 16);
+                pc += 4;
+                break;
+            }
+            case 26: { // xori rA, rS, UIMM
+                GetGPR(ctx, a).u64 = GetGPR(ctx, s).u64 ^ uimm;
+                pc += 4;
+                break;
+            }
+            case 27: { // xoris rA, rS, UIMM
+                GetGPR(ctx, a).u64 = GetGPR(ctx, s).u64 ^ (static_cast<uint64_t>(uimm) << 16);
+                pc += 4;
+                break;
+            }
+            case 28: { // andi. rA, rS, UIMM
+                uint32_t res = GetGPR(ctx, s).u32 & uimm;
+                GetGPR(ctx, a).u64 = res;
+                UpdateCR0(ctx, res);
+                pc += 4;
+                break;
+            }
+            case 29: { // andis. rA, rS, UIMM
+                uint32_t res = GetGPR(ctx, s).u32 & (static_cast<uint32_t>(uimm) << 16);
+                GetGPR(ctx, a).u64 = res;
+                UpdateCR0(ctx, res);
+                pc += 4;
+                break;
+            }
+            case 31: { // Extended opcode 31
+                uint32_t xo = (instr >> 1) & 0x3FFu;
+                uint32_t rc = instr & 1u;
+                switch (xo) {
+                    case 0: { // cmp crfD, L, rA, rB
+                        uint32_t crf = (instr >> 23) & 7;
+                        uint32_t l = (instr >> 21) & 1;
+                        int64_t a_val = l ? GetGPR(ctx, a).s64 : GetGPR(ctx, a).s32;
+                        int64_t b_val = l ? GetGPR(ctx, b).s64 : GetGPR(ctx, b).s32;
+                        GetCRField(ctx, crf).compare(a_val, b_val, ctx.xer);
+                        break;
+                    }
+                    case 32: { // cmpl crfD, L, rA, rB
+                        uint32_t crf = (instr >> 23) & 7;
+                        uint32_t l = (instr >> 21) & 1;
+                        uint64_t a_val = l ? GetGPR(ctx, a).u64 : GetGPR(ctx, a).u32;
+                        uint64_t b_val = l ? GetGPR(ctx, b).u64 : GetGPR(ctx, b).u32;
+                        GetCRField(ctx, crf).compare(a_val, b_val, ctx.xer);
+                        break;
+                    }
+                    case 8: { // subfc rD, rA, rB (rD = ~rA + rB + 1 = rB - rA)
+                        uint32_t a_val = GetGPR(ctx, a).u32;
+                        uint32_t b_val = GetGPR(ctx, b).u32;
+                        uint32_t res = b_val - a_val;
+                        ctx.xer.ca = (b_val >= a_val) ? 1 : 0;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 10: { // addc rD, rA, rB
+                        uint32_t a_val = GetGPR(ctx, a).u32;
+                        uint32_t b_val = GetGPR(ctx, b).u32;
+                        uint64_t sum = static_cast<uint64_t>(a_val) + b_val;
+                        ctx.xer.ca = (sum > 0xFFFFFFFFULL) ? 1 : 0;
+                        GetGPR(ctx, d).u64 = static_cast<uint32_t>(sum);
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(sum));
+                        break;
+                    }
+                    case 40: { // subf rD, rA, rB (rD = rB - rA)
+                        uint32_t res = GetGPR(ctx, b).u32 - GetGPR(ctx, a).u32;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 136: { // subfe rD, rA, rB (rD = ~rA + rB + CA)
+                        uint32_t a_val = GetGPR(ctx, a).u32;
+                        uint32_t b_val = GetGPR(ctx, b).u32;
+                        uint64_t full = static_cast<uint64_t>(~a_val) + b_val + ctx.xer.ca;
+                        uint32_t res = static_cast<uint32_t>(full);
+                        ctx.xer.ca = (full > 0xFFFFFFFFULL) ? 1 : 0;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 138: { // adde rD, rA, rB (rD = rA + rB + CA)
+                        uint32_t a_val = GetGPR(ctx, a).u32;
+                        uint32_t b_val = GetGPR(ctx, b).u32;
+                        uint64_t full = static_cast<uint64_t>(a_val) + b_val + ctx.xer.ca;
+                        uint32_t res = static_cast<uint32_t>(full);
+                        ctx.xer.ca = (full > 0xFFFFFFFFULL) ? 1 : 0;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 266: { // add rD, rA, rB
+                        uint32_t res = GetGPR(ctx, a).u32 + GetGPR(ctx, b).u32;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 444: { // or rA, rS, rB (includes mr rA, rS: or rA, rS, rS)
+                        uint64_t res = GetGPR(ctx, s).u64 | GetGPR(ctx, b).u64;
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 316: { // xor rA, rS, rB
+                        uint64_t res = GetGPR(ctx, s).u64 ^ GetGPR(ctx, b).u64;
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 28: { // and rA, rS, rB
+                        uint64_t res = GetGPR(ctx, s).u64 & GetGPR(ctx, b).u64;
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 60: { // andc rA, rS, rB (rA = rS & ~rB)
+                        uint64_t res = GetGPR(ctx, s).u64 & (~GetGPR(ctx, b).u64);
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 124: { // nor rA, rS, rB (includes not: nor rA, rS, rS)
+                        uint64_t res = ~(GetGPR(ctx, s).u64 | GetGPR(ctx, b).u64);
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 104: { // neg rD, rA
+                        uint32_t res = -GetGPR(ctx, a).u32;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 235: { // mullw rD, rA, rB
+                        int32_t res = GetGPR(ctx, a).s32 * GetGPR(ctx, b).s32;
+                        GetGPR(ctx, d).s64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 491: { // divw rD, rA, rB
+                        int32_t b_val = GetGPR(ctx, b).s32;
+                        int32_t res = (b_val != 0) ? (GetGPR(ctx, a).s32 / b_val) : 0;
+                        GetGPR(ctx, d).s64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 459: { // divwu rD, rA, rB
+                        uint32_t b_val = GetGPR(ctx, b).u32;
+                        uint32_t res = (b_val != 0) ? (GetGPR(ctx, a).u32 / b_val) : 0;
+                        GetGPR(ctx, d).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 24: { // slw rA, rS, rB
+                        uint32_t sh = GetGPR(ctx, b).u32;
+                        uint32_t res = (sh & 0x20) ? 0 : (GetGPR(ctx, s).u32 << (sh & 0x1F));
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 536: { // srw rA, rS, rB
+                        uint32_t sh = GetGPR(ctx, b).u32;
+                        uint32_t res = (sh & 0x20) ? 0 : (GetGPR(ctx, s).u32 >> (sh & 0x1F));
+                        GetGPR(ctx, a).u64 = res;
+                        if (rc) UpdateCR0(ctx, res);
+                        break;
+                    }
+                    case 792: { // sraw rA, rS, rB
+                        uint32_t sh = GetGPR(ctx, b).u32;
+                        int32_t val = GetGPR(ctx, s).s32;
+                        int32_t res = (sh & 0x20) ? ((val < 0) ? -1 : 0) : (val >> (sh & 0x1F));
+                        GetGPR(ctx, a).s64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 824: { // srawi rA, rS, SH
+                        uint32_t sh = (instr >> 11) & 0x1F;
+                        int32_t res = GetGPR(ctx, s).s32 >> sh;
+                        GetGPR(ctx, a).s64 = res;
+                        if (rc) UpdateCR0(ctx, static_cast<uint32_t>(res));
+                        break;
+                    }
+                    case 922: { // extsh rA, rS
+                        GetGPR(ctx, a).s64 = static_cast<int16_t>(GetGPR(ctx, s).u16);
+                        if (rc) UpdateCR0(ctx, GetGPR(ctx, a).u32);
+                        break;
+                    }
+                    case 954: { // extsb rA, rS
+                        GetGPR(ctx, a).s64 = static_cast<int8_t>(GetGPR(ctx, s).u8);
+                        if (rc) UpdateCR0(ctx, GetGPR(ctx, a).u32);
+                        break;
+                    }
+                    case 986: { // extsw rA, rS
+                        GetGPR(ctx, a).s64 = GetGPR(ctx, s).s32;
+                        if (rc) UpdateCR0(ctx, GetGPR(ctx, a).u32);
+                        break;
+                    }
+                    case 26: { // cntlzw rA, rS
+                        GetGPR(ctx, a).u64 = std::countl_zero(GetGPR(ctx, s).u32);
+                        if (rc) UpdateCR0(ctx, GetGPR(ctx, a).u32);
+                        break;
+                    }
+                    case 23: { // lwzx rD, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        GetGPR(ctx, d).u64 = ReadGuestU32(base, ea);
+                        break;
+                    }
+                    case 87: { // lbzx rD, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        GetGPR(ctx, d).u64 = ReadGuestU8(base, ea);
+                        break;
+                    }
+                    case 279: { // lhzx rD, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        GetGPR(ctx, d).u64 = ReadGuestU16(base, ea);
+                        break;
+                    }
+                    case 343: { // lhax rD, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        GetGPR(ctx, d).s64 = static_cast<int16_t>(ReadGuestU16(base, ea));
+                        break;
+                    }
+                    case 151: { // stwx rS, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        WriteGuestU32(base, ea, GetGPR(ctx, s).u32);
+                        break;
+                    }
+                    case 215: { // stbx rS, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        WriteGuestU8(base, ea, GetGPR(ctx, s).u8);
+                        break;
+                    }
+                    case 407: { // sthx rS, rA, rB
+                        uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + GetGPR(ctx, b).u32;
+                        WriteGuestU16(base, ea, GetGPR(ctx, s).u16);
+                        break;
+                    }
+                    case 467: { // mtspr
+                        uint32_t spr = (((instr >> 11) & 0x1F) << 5) | ((instr >> 16) & 0x1F);
+                        if (spr == 9) { // CTR
+                            ctx.ctr.u64 = GetGPR(ctx, s).u64;
+                        } else if (spr == 8) { // LR
+                            ctx.lr = GetGPR(ctx, s).u64;
+                        } else if (spr == 1) { // XER
+                            ctx.xer.so = (GetGPR(ctx, s).u32 >> 31) & 1;
+                            ctx.xer.ov = (GetGPR(ctx, s).u32 >> 30) & 1;
+                            ctx.xer.ca = (GetGPR(ctx, s).u32 >> 29) & 1;
+                        }
+                        break;
+                    }
+                    case 339: { // mfspr
+                        uint32_t spr = (((instr >> 11) & 0x1F) << 5) | ((instr >> 16) & 0x1F);
+                        if (spr == 9) { // CTR
+                            GetGPR(ctx, d).u64 = ctx.ctr.u64;
+                        } else if (spr == 8) { // LR
+                            GetGPR(ctx, d).u64 = ctx.lr;
+                        } else if (spr == 1) { // XER
+                            GetGPR(ctx, d).u64 = (static_cast<uint32_t>(ctx.xer.so) << 31) |
+                                                 (static_cast<uint32_t>(ctx.xer.ov) << 30) |
+                                                 (static_cast<uint32_t>(ctx.xer.ca) << 29);
+                        }
+                        break;
+                    }
+                    case 144: { // mtcrf FXM, rS
+                        uint32_t fxm = (instr >> 12) & 0xFFu;
+                        uint32_t val = GetGPR(ctx, s).u32;
+                        for (uint32_t i = 0; i < 8; ++i) {
+                            if (fxm & (0x80u >> i)) {
+                                GetCRField(ctx, i).set_raw((val >> (28 - (i * 4))) & 0xFu);
+                            }
+                        }
+                        break;
+                    }
+                    case 19: { // mfcr
+                        uint32_t cr = 0;
+                        for (uint32_t i = 0; i < 8; ++i) {
+                            cr |= (GetCRField(ctx, i).raw() & 0xFu) << (28 - (i * 4));
+                        }
+                        GetGPR(ctx, d).u64 = cr;
+                        break;
+                    }
+                    default:
+                        return false; // Unhandled opcode 31
+                }
+                pc += 4;
+                break;
+            }
+            case 32: { // lwz rD, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                GetGPR(ctx, d).u64 = ReadGuestU32(base, ea);
+                pc += 4;
+                break;
+            }
+            case 34: { // lbz rD, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                GetGPR(ctx, d).u64 = ReadGuestU8(base, ea);
+                pc += 4;
+                break;
+            }
+            case 35: { // lbzu rD, d(rA)
+                uint32_t ea = GetGPR(ctx, a).u32 + simm;
+                GetGPR(ctx, d).u64 = ReadGuestU8(base, ea);
+                GetGPR(ctx, a).u64 = ea;
+                pc += 4;
+                break;
+            }
+            case 36: { // stw rS, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                WriteGuestU32(base, ea, GetGPR(ctx, s).u32);
+                pc += 4;
+                break;
+            }
+            case 37: { // stwu rS, d(rA)
+                uint32_t ea = GetGPR(ctx, a).u32 + simm;
+                WriteGuestU32(base, ea, GetGPR(ctx, s).u32);
+                GetGPR(ctx, a).u64 = ea;
+                pc += 4;
+                break;
+            }
+            case 38: { // stb rS, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                WriteGuestU8(base, ea, GetGPR(ctx, s).u8);
+                pc += 4;
+                break;
+            }
+            case 40: { // lhz rD, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                GetGPR(ctx, d).u64 = ReadGuestU16(base, ea);
+                pc += 4;
+                break;
+            }
+            case 42: { // lha rD, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                GetGPR(ctx, d).s64 = static_cast<int16_t>(ReadGuestU16(base, ea));
+                pc += 4;
+                break;
+            }
+            case 44: { // sth rS, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                WriteGuestU16(base, ea, GetGPR(ctx, s).u16);
+                pc += 4;
+                break;
+            }
+            case 48: { // lfs frD, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                uint32_t val = ReadGuestU32(base, ea);
+                GetFPR(ctx, d).f64 = static_cast<double>(std::bit_cast<float>(val));
+                pc += 4;
+                break;
+            }
+            case 50: { // lfd frD, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                uint64_t val = ReadGuestU64(base, ea);
+                GetFPR(ctx, d).f64 = std::bit_cast<double>(val);
+                pc += 4;
+                break;
+            }
+            case 52: { // stfs frS, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                float fval = static_cast<float>(GetFPR(ctx, s).f64);
+                WriteGuestU32(base, ea, std::bit_cast<uint32_t>(fval));
+                pc += 4;
+                break;
+            }
+            case 54: { // stfd frS, d(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + simm;
+                WriteGuestU64(base, ea, std::bit_cast<uint64_t>(GetFPR(ctx, s).f64));
+                pc += 4;
+                break;
+            }
+            case 58: { // ld rD, ds(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + static_cast<int16_t>(instr & 0xFFFCu);
+                GetGPR(ctx, d).u64 = ReadGuestU64(base, ea);
+                pc += 4;
+                break;
+            }
+            case 62: { // std rS, ds(rA)
+                uint32_t ea = (a == 0 ? 0 : GetGPR(ctx, a).u32) + static_cast<int16_t>(instr & 0xFFFCu);
+                WriteGuestU64(base, ea, GetGPR(ctx, s).u64);
+                pc += 4;
+                break;
+            }
+            case 63: { // Floating-point operations
+                uint32_t xo = (instr >> 1) & 0x3FFu;
+                uint32_t c = (instr >> 6) & 0x1F;
+                if (xo == 72) { // fmr frD, frB
+                    GetFPR(ctx, d).f64 = GetFPR(ctx, b).f64;
+                } else if (xo == 40) { // fneg frD, frB
+                    GetFPR(ctx, d).f64 = -GetFPR(ctx, b).f64;
+                } else if (xo == 264) { // fabs frD, frB
+                    GetFPR(ctx, d).f64 = std::abs(GetFPR(ctx, b).f64);
+                } else if (xo == 21) { // fadds frD, frA, frB
+                    GetFPR(ctx, d).f64 = static_cast<double>(static_cast<float>(GetFPR(ctx, a).f64 + GetFPR(ctx, b).f64));
+                } else if (xo == 20) { // fsubs frD, frA, frB
+                    GetFPR(ctx, d).f64 = static_cast<double>(static_cast<float>(GetFPR(ctx, a).f64 - GetFPR(ctx, b).f64));
+                } else if (xo == 25) { // fmuls frD, frA, frC
+                    GetFPR(ctx, d).f64 = static_cast<double>(static_cast<float>(GetFPR(ctx, a).f64 * GetFPR(ctx, c).f64));
+                } else {
+                    return false;
+                }
+                pc += 4;
+                break;
+            }
+            default:
+                return false; // Unhandled primary opcode
+        }
+    }
+    return false; // Exceeded kMaxInstructions
+}
+
 extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t target_addr, uint32_t caller_lr) {
     RecordDispatchBreadcrumb(target_addr, caller_lr);
 
@@ -271,80 +976,10 @@ extern "C" void SafeDispatchIndirect(PPCContext& ctx, uint8_t* base, uint32_t ta
             }
         }
 
-        // Pattern 3: Simple leaf returning constant (e.g. li r3, N; blr)
-        if ((i0 & 0xFFFF0000u) == 0x38600000u && i1 == 0x4E800020u) {
-            ctx.r3.s64 = static_cast<int16_t>(i0 & 0xFFFFu);
-            return;
-        }
-
-        // Pattern 4: Immediate blr (no-op stub)
-        if (i0 == 0x4E800020u) {
-            return;
-        }
-
-        // Pattern 5: 8-instruction Engine vtable thunk (e.g. sub_86DAB220)
-        uint32_t i4 = __builtin_bswap32(p[4]);
-        uint32_t i5 = __builtin_bswap32(p[5]);
-        uint32_t i6 = __builtin_bswap32(p[6]);
-        uint32_t i7 = __builtin_bswap32(p[7]);
-        if ((i0 & 0xFFFF0000u) == 0x3D600000u && i1 == 0x88A40000u &&
-            i2 == 0x80840004u && (i3 & 0xFFFF0000u) == 0x806B0000u &&
-            i4 == 0x81430000u && (i5 & 0xFFFF0000u) == 0x812A0000u &&
-            i6 == 0x7D2903A6u && i7 == 0x4E800420u) {
-            uint32_t r11_val = (i0 & 0xFFFFu) << 16;
-            ctx.r5.u64 = *reinterpret_cast<const uint8_t*>(base + ctx.r4.u32);
-            ctx.r4.u64 = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + ctx.r4.u32 + 4));
-            int16_t r3_off = static_cast<int16_t>(i3 & 0xFFFFu);
-            uint32_t r3_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + r11_val + r3_off));
-            ctx.r3.u64 = r3_val;
-            uint32_t r10_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + r3_val));
-            ctx.r10.u64 = r10_val;
-            int16_t r9_off = static_cast<int16_t>(i5 & 0xFFFFu);
-            uint32_t method = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + r10_val + r9_off));
-            ctx.r9.u64 = method;
-            ctx.ctr.u64 = method;
-            SafeDispatchIndirect(ctx, base, method, caller_lr);
-            return;
-        }
-
-        // Pattern 6: vgui::Panel::HasParent hierarchy walk (e.g. 0x83C253B0 in vgui2_360)
-        // cmpw cr6, r3, r4 (0x7F032040)
-        // bne cr6, +12      (0x409A000C)
-        // li r3, 1          (0x38600001)
-        // blr               (0x4E800020)
-        if (i0 == 0x7F032040u && i1 == 0x409A000Cu && i2 == 0x38600001u && i3 == 0x4E800020u) {
-            uint32_t child = ctx.r3.u32;
-            uint32_t target_parent = ctx.r4.u32;
-            while (child >= 0x00010000u) {
-                if (child == target_parent) {
-                    ctx.r3.u64 = 1;
-                    return;
-                }
-                child = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + child + 0x14));
-            }
-            ctx.r3.u64 = 0;
-            return;
-        }
-
-        // Pattern 7: CUtlRBTree / CDefOps::Less branchless unsigned comparator (e.g. 0x82E10668 in vstdlib_360)
-        // lwz r11, 0(r3)           (0x81630000)
-        // lwz r10, 0(r4)           (0x81440000)
-        // subfc r9, r10, r11       (0x7D2A5810)
-        // subfe r7, r8, r8         (0x7CE84110)
-        // rlwinm r3, r7, 0, 31, 31 (0x54E307FE)
-        // blr                      (0x4E800020)
-        if (i0 == 0x81630000u && i1 == 0x81440000u && i2 == 0x7D2A5810u &&
-            i3 == 0x7CE84110u && __builtin_bswap32(p[4]) == 0x54E307FEu &&
-            __builtin_bswap32(p[5]) == 0x4E800020u) {
-            uint32_t a_ptr = ctx.r3.u32;
-            uint32_t b_ptr = ctx.r4.u32;
-            if (a_ptr >= 0x00010000u && b_ptr >= 0x00010000u) {
-                uint32_t a_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + a_ptr));
-                uint32_t b_val = __builtin_bswap32(*reinterpret_cast<const uint32_t*>(base + b_ptr));
-                ctx.r3.u64 = (a_val < b_val) ? 1 : 0;
-            } else {
-                ctx.r3.u64 = 0;
-            }
+        // Dynamic PowerPC Leaf Interpreter: executes uncompiled leaf getters, setters,
+        // bounds layout methods (e.g. vgui::Panel::SetBounds, GetBounds), visibility controls,
+        // hierarchy traversals (HasParent), adjuster thunks, and container comparisons (CDefOps::Less).
+        if (ExecutePPCLeaf(ctx, base, target_addr, caller_lr)) {
             return;
         }
     }
