@@ -33,6 +33,25 @@ def patch_function(name: str, anchor: str, replacement: str, *, module: str = "e
     raise SystemExit(f"Engine null-vtable patch: function {name} was not generated")
 
 
+# This panel callback takes the array element in r4 as its receiver. A missing
+# backing array makes the first element address zero and later ones offsets
+# from zero. Skip this traversal until the backing array exists.
+patch_function(
+    "sub_86DAC498",
+    """loc_86DAC4D0:
+\t// lwz r11,0(r30)
+\tctx.r11.u64 = REX_LOAD_U32(ctx.r30.u32 + 0);
+\t// mr r3,r28
+""",
+    """loc_86DAC4D0:
+\t// lwz r11,0(r30)
+\tctx.r11.u64 = REX_LOAD_U32(ctx.r30.u32 + 0);
+\tif (ctx.r27.u32 == 0x83C26210u && ctx.r11.u32 == 0) goto loc_86DAC4F8;
+\t// mr r3,r28
+""",
+)
+
+
 # Keep the existing sub_86C31938 guard. The iOS crash log points into
 # sub_86C314B8, where startup can reach a virtual call before its interface
 # pointer chain has been initialized.
