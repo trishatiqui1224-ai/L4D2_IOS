@@ -38,8 +38,8 @@ not rebound. The sets are transient per frame (freed when the frame is done),
 so the frame is part of the key. The image view is what the descriptor
 points at; new data loaded into the same texture needs no new descriptor.
 
-Cvar ios_reuse_texture_descriptors, default on; false gives back the
-write-every-draw behaviour.
+Cvar ios_reuse_texture_descriptors defaults to false while investigating
+corrupted menu text. Enable it when comparing the two binding paths.
 """
 
 import pathlib
@@ -69,7 +69,7 @@ CVAR_ANCHOR = '''REXCVAR_DECLARE(bool, medir_paquetes);  // idem
 CVAR_NEW = '''REXCVAR_DECLARE(bool, medir_paquetes);  // idem
 #if REX_PLATFORM_IOS
 // LOCAL PATCH - iOS (tools/ios/patch_ios_texture_descriptors.py).
-REXCVAR_DEFINE_BOOL(ios_reuse_texture_descriptors, true, "GPU",
+REXCVAR_DEFINE_BOOL(ios_reuse_texture_descriptors, false, "GPU",
                     "iOS: a draw with the same textures and samplers as the previous one "
                     "reuses its descriptor sets instead of writing new ones");
 #endif

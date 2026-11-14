@@ -33,6 +33,22 @@ def patch_function(name: str, anchor: str, replacement: str, *, module: str = "e
     raise SystemExit(f"Engine null-vtable patch: function {name} was not generated")
 
 
+# Restore the bit-buffer read used during map loading. A dispatch fallback
+# returned zero where the caller expects the original reader object in r3.
+patch_function(
+    "sub_86E2BD50",
+    """\tREX_FUNC_PROLOGUE();
+\tPPCFunc* wired = LookupGlobalFunction(base, 0x86E2BD50u);
+\tif (__builtin_expect(wired != nullptr && wired != &sub_86E2BD50, 1)) {
+\t\twired(ctx, base);
+\t\treturn;
+\t}
+\tSafeDispatchIndirect(ctx, base, 0x86E2BD50u, static_cast<uint32_t>(ctx.lr));
+""",
+    Path(__file__).with_name("engine_bit_reader.inc").read_text(encoding="utf-8"),
+)
+
+
 # All callbacks in this traversal take a record address in r4. A missing
 # backing array would pass zero for the first record and offsets from zero
 # for subsequent records, regardless of the callback address.
