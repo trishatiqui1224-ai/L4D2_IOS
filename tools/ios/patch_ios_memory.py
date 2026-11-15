@@ -204,6 +204,14 @@ VIEWS_NEW = '''#if REX_PLATFORM_IOS
 #endif
 '''
 
+HEAP_FAILURE = '''    REXSYS_ERROR("BaseHeap::Alloc failed to find contiguous range");
+'''
+HEAP_FAILURE_WITH_DETAILS = '''    REXSYS_ERROR(
+        "BaseHeap::Alloc failed to find contiguous range: heap={:08X}, "
+        "range={:08X}-{:08X}, size={:#x}, alignment={:#x}, free_pages={}",
+        heap_base_, low_address, high_address, size, alignment, unreserved_page_count_);
+'''
+
 BLOCKS = [
     ("src/core/memory_posix.cpp", "mach_vm_region through vm_region_64", MACH_ANCHOR, MACH_NEW),
     ("src/core/memory_posix.cpp", "guest memory as a Mach memory entry", CREATE_ANCHOR,
@@ -211,6 +219,8 @@ BLOCKS = [
     ("src/core/memory_posix.cpp", "release the Mach memory entry", CLOSE_ANCHOR, CLOSE_NEW),
     ("src/core/memory_posix.cpp", "map views with vm_map", MAP_ANCHOR, MAP_NEW),
     ("src/system/xmemory.cpp", "guest views through MapFileView", VIEWS_ANCHOR, VIEWS_NEW),
+    ("src/system/xmemory.cpp", "identify exhausted guest heap and requested range",
+     HEAP_FAILURE, HEAP_FAILURE_WITH_DETAILS),
 ]
 
 if __name__ == "__main__":

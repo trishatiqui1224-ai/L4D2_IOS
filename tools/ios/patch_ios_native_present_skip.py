@@ -53,6 +53,7 @@ OLD_UNGUARDED_NEW = '''  bool is_active = writable_properties.IsActive();
 NEW = '''  bool is_active = writable_properties.IsActive();
   ios_timing::g_frames.fetch_add(1, std::memory_order_relaxed);  // LOCAL PATCH - iOS
 #if REX_PLATFORM_IOS
+  ios_timing::g_total_guest_frames.fetch_add(1, std::memory_order_relaxed);
   // LOCAL PATCH - iOS: the native renderer shows the game: no gamma pass, no
   // paint, no present of this hidden output (patch_ios_native_present_skip.py).
   if (rex_native_draws_only.load(std::memory_order_relaxed)) {

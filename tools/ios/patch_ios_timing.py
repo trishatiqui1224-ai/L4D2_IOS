@@ -95,6 +95,7 @@ COUNTERS_NEW = '''// LOCAL PATCH - iOS: where the swap time goes (tools/ios/patc
 namespace ios_timing {
 std::atomic<uint64_t> g_refresh_ns{0};
 std::atomic<uint64_t> g_frames{0};
+std::atomic<uint64_t> g_total_guest_frames{0};
 std::atomic<uint64_t> g_cp_paint_ns{0};
 std::atomic<uint64_t> g_cp_paints{0};
 std::atomic<uint64_t> g_ui_paint_ns{0};
@@ -152,6 +153,10 @@ static void Report() {
       paint_queue_wait, paint_submit, present, cp_queue_wait);
 }
 }  // namespace ios_timing
+
+extern "C" __attribute__((visibility("default"))) uint64_t L4D2_GetGuestFrameCount() {
+  return ios_timing::g_total_guest_frames.load(std::memory_order_relaxed);
+}
 
 void Presenter::PaintFromUIThread(bool force_paint) {
 '''

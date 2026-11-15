@@ -216,6 +216,7 @@ protected:
 
     void OnShutdown() override {
         l4d2::boot::Trace("game: OnShutdown");
+        l4d2::touch::RemoveFpsCounter();
         l4d2::ModuleLoader::Instance().Shutdown();
     }
 };

@@ -24,6 +24,7 @@ struct TouchConfig {
 
 void Install(const TouchConfig& config);
 void InstallFpsCounter();
+void RemoveFpsCounter();
 void SetVisible(bool visible);
 void UpdateConfig(const TouchConfig& config);
 

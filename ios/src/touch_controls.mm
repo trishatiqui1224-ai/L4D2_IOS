@@ -2,10 +2,14 @@
 #import "l4d2_strings.h"
 #import <UIKit/UIKit.h>
 #import <GameController/GameController.h>
+#import <QuartzCore/QuartzCore.h>
 #import "boot_trace.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
+
+extern "C" uint64_t L4D2_GetGuestFrameCount();
 #if L4D2_TOUCH_SDL
 #include <SDL3/SDL.h>
 
@@ -42,6 +46,7 @@ static void SetStick(int axis, CGFloat x, CGFloat y) {
 
 static UIView* s_overlay = nil;
 static UILabel* s_fps_label = nil;
+static NSTimer* s_fps_timer = nil;
 static bool s_gamepad_connected = false;
 
 @interface L4D2TouchOverlay : UIView
@@ -423,6 +428,8 @@ static bool s_gamepad_connected = false;
                                                               weight:UIImageSymbolWeightSemibold];
     }
     btn.configuration = buttonConfig;
+    btn.titleLabel.numberOfLines = 1;
+    btn.titleLabel.lineBreakMode = NSLineBreakByClipping;
     btn.titleLabel.font = [UIFont systemFontOfSize:MIN(13.0, MAX(9.0, rect.size.height * 0.22))
                                              weight:UIFontWeightBold];
     btn.titleLabel.adjustsFontSizeToFitWidth = YES;
@@ -632,9 +639,31 @@ void InstallFpsCounter() {
             s_fps_label.textAlignment = NSTextAlignmentCenter;
             s_fps_label.layer.cornerRadius = 6.0;
             s_fps_label.layer.masksToBounds = YES;
-            s_fps_label.text = @"60.0 FPS • 16.6ms";
-            [window addSubview:s_fps_label];
+            s_fps_label.text = @"Waiting for game frames";
+            s_fps_label.layer.zPosition = 101;
+            __block uint64_t previousFrames = L4D2_GetGuestFrameCount();
+            __block CFTimeInterval previousTime = CACurrentMediaTime();
+            s_fps_timer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer*) {
+                const auto frames = L4D2_GetGuestFrameCount();
+                const auto time = CACurrentMediaTime();
+                const double fps = double(frames - previousFrames) / (time - previousTime);
+                previousFrames = frames;
+                previousTime = time;
+                s_fps_label.text = fps > 0
+                    ? [NSString stringWithFormat:@"%.1f FPS • %.1f ms", fps, 1000.0 / fps]
+                    : @"0.0 FPS • — ms";
+            }];
         }
+        if (s_fps_label.superview != window) [window addSubview:s_fps_label];
+    });
+}
+
+void RemoveFpsCounter() {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [s_fps_timer invalidate];
+        s_fps_timer = nil;
+        [s_fps_label removeFromSuperview];
+        s_fps_label = nil;
     });
 }
 

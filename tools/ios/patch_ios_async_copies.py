@@ -10,7 +10,7 @@ before submitting.
 
 Touches src/graphics/vulkan/shared_memory.cpp,
 src/graphics/vulkan/command_processor.cpp and src/graphics/shared_memory.cpp. Apply after
-patch_ios_paint_suspend.py. Cvar ios_async_upload_copies (on).
+patch_ios_paint_suspend.py. Cvar ios_async_upload_copies (off by default).
 
 
 WHY
@@ -72,7 +72,7 @@ SM_TOP_NEW = '''#include <rex/graphics/vulkan/shared_memory.h>
 #include <deque>
 #include <mutex>
 #include <thread>
-REXCVAR_DEFINE_BOOL(ios_async_upload_copies, true, "GPU",
+REXCVAR_DEFINE_BOOL(ios_async_upload_copies, false, "GPU",
                     "iOS: copy guest memory into the upload buffers on worker threads, waited "
                     "for just before each submission");
 namespace rex::graphics::vulkan {
