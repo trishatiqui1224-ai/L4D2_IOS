@@ -113,6 +113,7 @@ static NSMutableDictionary<NSString*, NSString*>* LoadSettings(const fs::path& d
     dict[@"low_ram"] = @"true";
     dict[@"cpu_boost"] = @"true";
     dict[@"log_level"] = @"info";
+    dict[@"shader_audit"] = @"false";
     dict[@"language"] = @"en";
     dict[@"split_screen"] = @"false";
 
@@ -237,6 +238,8 @@ static const std::vector<SectionDef>& AllSections() {
              {@"log_level", RowType::kChoice, @"Log Level",
               @"Verbosity level written to Documents/l4d2.log.", @"info",
               {{@"Info (Default)", @"info"}, {@"Debug", @"debug"}, {@"Warning", @"warning"}, {@"Error", @"error"}}},
+             {@"shader_audit", RowType::kSwitch, @"Capture Vulkan Shaders",
+              @"Saves shader variants used during play to Documents/ShaderAudit for diagnosis.", @"false"},
              {@"export_logs", RowType::kAction, @"Export Logs (.zip)",
               @"Bundles boot.txt, l4d2.log, settings.json, and crash reports into a shareable zip.", @""},
              {@"clear_cache", RowType::kAction, @"Clear Shader & Pipeline Cache",
@@ -874,6 +877,9 @@ std::vector<std::string> SettingsArguments(const fs::path& documents) {
 
     // Diagnostics & Game
     args.push_back("--log_level=" + std::string(s[@"log_level"] ? s[@"log_level"].UTF8String : "info"));
+    if ([s[@"shader_audit"] isEqualToString:@"true"]) {
+        args.push_back("--dump_shaders=" + (documents / "ShaderAudit").string());
+    }
     args.push_back(std::string("--split_screen=") + ([s[@"split_screen"] isEqualToString:@"true"] ? "true" : "false"));
 
     NSString* lang = s[@"language"];

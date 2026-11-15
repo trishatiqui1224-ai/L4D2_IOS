@@ -28,6 +28,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from patch_engine import run  # noqa: E402
 
 FILE = "src/graphics/pipeline/shader/translator.cpp"
+PIPELINE = "src/graphics/vulkan/pipeline_cache.cpp"
 
 ANCHOR = '''  ucode_disassembly_ = ucode_disasm_buffer.to_string();
 '''
@@ -54,6 +55,22 @@ REXCVAR_DEFINE_BOOL(ios_log_shader_disasm, false, "GPU",
 BLOCKS = [
     (FILE, "the ios_log_shader_disasm cvar", CVAR_ANCHOR, CVAR_NEW),
     (FILE, "disassembly logged", ANCHOR, NEW),
+    (PIPELINE, "declare the shared shader dump directory",
+     "#include <rex/cvar.h>\n",
+     "#include <rex/cvar.h>\n\nREXCVAR_DECLARE(std::string, dump_shaders);\n"),
+    (PIPELINE, "dump accepted Vulkan shader variants",
+     """  // TODO(Triang3l): Log that the shader has been successfully translated in
+  // common code.
+""",
+     """  const auto& shader_dump_directory = REXCVAR_GET(dump_shaders);
+  if (!shader_dump_directory.empty()) {
+    translation.Dump(shader_dump_directory, "vulkan_spirv");
+    REXGPU_INFO("[shader-audit] Vulkan module accepted: {} {:016X}, variant {:016X}, {} bytes",
+                shader.type() == xenos::ShaderType::kVertex ? "VS" : "PS",
+                shader.ucode_data_hash(), translation.modification(),
+                translation.translated_binary().size());
+  }
+"""),
 ]
 
 if __name__ == "__main__":
