@@ -8,7 +8,7 @@ data are no longer reloaded every frame.
     python3 tools/ios/patch_ios_narrow_invalidation.py --status
     python3 tools/ios/patch_ios_narrow_invalidation.py --revert
 
-Touches src/graphics/shared_memory.cpp. Cvar ios_narrow_invalidation (on).
+Touches src/graphics/shared_memory.cpp. Cvar ios_narrow_invalidation (off by default).
 
 
 WHY
@@ -50,7 +50,7 @@ CVAR_ANCHOR = '''std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationC
 '''
 CVAR_NEW = '''#if REX_PLATFORM_IOS
 // LOCAL PATCH - iOS (tools/ios/patch_ios_narrow_invalidation.py).
-REXCVAR_DEFINE_BOOL(ios_narrow_invalidation, true, "GPU",
+REXCVAR_DEFINE_BOOL(ios_narrow_invalidation, false, "GPU",
                     "iOS: a CPU write's widened invalidation stops at watched ranges it does "
                     "not touch (textures next to per-frame data are not reloaded every frame)");
 #endif

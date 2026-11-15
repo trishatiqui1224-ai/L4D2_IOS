@@ -206,10 +206,18 @@ VIEWS_NEW = '''#if REX_PLATFORM_IOS
 
 HEAP_FAILURE = '''    REXSYS_ERROR("BaseHeap::Alloc failed to find contiguous range");
 '''
-HEAP_FAILURE_WITH_DETAILS = '''    REXSYS_ERROR(
+HEAP_FAILURE_WITH_DETAILS = '''    uint32_t contiguous_pages = 0;
+    uint32_t largest_free_run_pages = 0;
+    for (uint32_t page = low_page_number; page <= high_page_number; ++page) {
+      contiguous_pages = page_table_[page].state == 0 ? contiguous_pages + 1 : 0;
+      largest_free_run_pages = std::max(largest_free_run_pages, contiguous_pages);
+    }
+    REXSYS_ERROR(
         "BaseHeap::Alloc failed to find contiguous range: heap={:08X}, "
-        "range={:08X}-{:08X}, size={:#x}, alignment={:#x}, free_pages={}",
-        heap_base_, low_address, high_address, size, alignment, unreserved_page_count_);
+        "range={:08X}-{:08X}, size={:#x}, alignment={:#x}, free_pages={}, "
+        "largest_free_run_pages={}",
+        heap_base_, low_address, high_address, size, alignment, unreserved_page_count_,
+        largest_free_run_pages);
 '''
 
 BLOCKS = [

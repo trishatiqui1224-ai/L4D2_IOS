@@ -841,7 +841,7 @@ std::vector<std::string> SettingsArguments(const fs::path& documents) {
     args.push_back("--title_id=454108D4");
     args.push_back("--l4d2_title_id=454108D4");
     args.push_back("--ios_iso_stream=true");
-    args.push_back("--ios_readback_max_kb=64");
+    args.push_back("--ios_readback_max_kb=256");
 
     // Display
     NSString* resStr = s[@"resolution"] ? s[@"resolution"] : @"1280x720";

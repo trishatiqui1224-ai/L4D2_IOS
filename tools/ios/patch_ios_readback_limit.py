@@ -51,7 +51,7 @@ CVAR_ANCHOR = '''REXCVAR_DECLARE(bool, medir_paquetes);  // idem
 CVAR_NEW = '''REXCVAR_DECLARE(bool, medir_paquetes);  // idem
 #if REX_PLATFORM_IOS
 // LOCAL PATCH - iOS (tools/ios/patch_ios_readback_limit.py).
-REXCVAR_DEFINE_INT32(ios_readback_max_kb, 64, "GPU",
+REXCVAR_DEFINE_INT32(ios_readback_max_kb, 256, "GPU",
                      "iOS: resolves larger than this (KB) are not read back to guest memory; "
                      "0 = read back everything");
 #endif
