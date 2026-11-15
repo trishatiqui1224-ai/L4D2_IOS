@@ -6,10 +6,7 @@
 #import "boot_trace.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <cmath>
-
-extern "C" uint64_t L4D2_GetGuestFrameCount();
 #if L4D2_TOUCH_SDL
 #include <SDL3/SDL.h>
 
@@ -626,7 +623,7 @@ void Install(const TouchConfig& config) {
     });
 }
 
-void InstallFpsCounter() {
+void InstallFpsCounter(uint64_t (*readGuestFrameCount)()) {
     dispatch_async(dispatch_get_main_queue(), ^{
         UIWindow* window = GetKeyWindow();
         if (!window) return;
@@ -641,10 +638,10 @@ void InstallFpsCounter() {
             s_fps_label.layer.masksToBounds = YES;
             s_fps_label.text = @"Waiting for game frames";
             s_fps_label.layer.zPosition = 101;
-            __block uint64_t previousFrames = L4D2_GetGuestFrameCount();
+            __block uint64_t previousFrames = readGuestFrameCount();
             __block CFTimeInterval previousTime = CACurrentMediaTime();
             s_fps_timer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer*) {
-                const auto frames = L4D2_GetGuestFrameCount();
+                const auto frames = readGuestFrameCount();
                 const auto time = CACurrentMediaTime();
                 const double fps = double(frames - previousFrames) / (time - previousTime);
                 previousFrames = frames;

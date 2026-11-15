@@ -35,6 +35,8 @@
 
 namespace fs = std::filesystem;
 
+extern "C" uint64_t L4D2_GetGuestFrameCount();
+
 static void RegisterL4D2StaticModules(rex::system::KernelState* kernel_state) {
     l4d2::ModuleLoader::RegisterRecompiledModules(kernel_state);
 }
@@ -196,7 +198,7 @@ protected:
             l4d2::touch::Install(touchCfg);
         }
         if (REXCVAR_GET(ios_show_fps)) {
-            l4d2::touch::InstallFpsCounter();
+            l4d2::touch::InstallFpsCounter(&L4D2_GetGuestFrameCount);
         }
     }
 

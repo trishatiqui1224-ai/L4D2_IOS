@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #ifdef __OBJC__
 #import <UIKit/UIKit.h>
 #endif
@@ -23,7 +25,7 @@ struct TouchConfig {
 };
 
 void Install(const TouchConfig& config);
-void InstallFpsCounter();
+void InstallFpsCounter(uint64_t (*readGuestFrameCount)());
 void RemoveFpsCounter();
 void SetVisible(bool visible);
 void UpdateConfig(const TouchConfig& config);
