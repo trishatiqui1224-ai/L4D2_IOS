@@ -37,6 +37,11 @@ def patch_generated_recomp_thunks(dry_run=False):
             hex_addr = match.group(2).upper()
             body = match.group(3)
 
+            # This bit-buffer reader uses CTR for loops. Its subfic and mtctr
+            # instructions match the heuristic below, but it is an engine routine.
+            if hex_addr == "86E2BD50" and cpp.parent.name == "engine_360":
+                return full_fn
+
             # Check if this is an unpatched raw XEX2 thunk (mtctr r11 without r11 assignment, or subfic import descriptor)
             if 'r11.u64' in body and ('ctx.ctr.u64 = ctx.r11.u64' in body or 'mtctr r11' in body):
                 # Check if r11 was assigned before ctr

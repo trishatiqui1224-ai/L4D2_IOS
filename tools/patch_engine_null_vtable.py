@@ -33,8 +33,9 @@ def patch_function(name: str, anchor: str, replacement: str, *, module: str = "e
     raise SystemExit(f"Engine null-vtable patch: function {name} was not generated")
 
 
-# Restore the bit-buffer read used during map loading. A dispatch fallback
-# returned zero where the caller expects the original reader object in r3.
+# The checked-in cache already contains this reader. Restore it only when
+# a locally generated source has the dispatch fallback in its place.
+bit_reader = Path(__file__).with_name("engine_bit_reader.inc").read_text(encoding="utf-8")
 patch_function(
     "sub_86E2BD50",
     """\tREX_FUNC_PROLOGUE();
@@ -45,7 +46,7 @@ patch_function(
 \t}
 \tSafeDispatchIndirect(ctx, base, 0x86E2BD50u, static_cast<uint32_t>(ctx.lr));
 """,
-    Path(__file__).with_name("engine_bit_reader.inc").read_text(encoding="utf-8"),
+    bit_reader.split("\n", 2)[2],
 )
 
 
